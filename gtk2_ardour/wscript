@@ -16,6 +16,7 @@ def m_hook(self, node):
 
 gtk2_ardour_sources = [
         'about.cc',
+        'update_checker.cc',
         'actions.cc',
         'add_route_dialog.cc',
         'ambiguous_file_dialog.cc',

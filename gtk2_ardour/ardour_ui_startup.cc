@@ -74,6 +74,7 @@
 #include "plugin_scan_dialog.h"
 #include "public_editor.h"
 #include "splash.h"
+#include "update_checker.h"
 #include "ui_config.h"
 
 #include "pbd/i18n.h"
@@ -108,6 +109,9 @@ ARDOUR_UI::first_idle ()
 	Glib::signal_timeout().connect (sigc::bind (sigc::ptr_fun (_hide_splash), this), 1000);
 
 	Keyboard::set_can_save_keybindings (true);
+
+        // Comprobación de actualización asíncrona de NOVA-STUDIO
+        UpdateChecker::check_and_notify(VERSIONSTRING, "thelandy03-boop/NOVA-STUDIO");
 	return false;
 }
 
