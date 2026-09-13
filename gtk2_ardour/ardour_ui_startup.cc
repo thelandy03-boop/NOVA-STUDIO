@@ -110,8 +110,6 @@ ARDOUR_UI::first_idle ()
 
 	Keyboard::set_can_save_keybindings (true);
 
-        // Comprobación de actualización asíncrona de NOVA-STUDIO
-        UpdateChecker::check_and_notify(VERSIONSTRING, "thelandy03-boop/NOVA-STUDIO");
 	return false;
 }
 

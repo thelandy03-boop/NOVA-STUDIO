@@ -50,6 +50,8 @@
 #include "new_user_wizard.h"
 #include "opts.h"
 #include "plugin_scan_dialog.h"
+#include "update_checker.h"
+#include "gtk2ardour-version.h"
 #include "session_dialog.h"
 #include "splash.h"
 #include "startup_fsm.h"
@@ -142,6 +144,8 @@ void
 StartupFSM::start ()
 {
 	DEBUG_TRACE (DEBUG::GuiStartup, string_compose (X_("State at startup: %1\n"), enum_2_string (_state)));
+
+    UpdateChecker::check_and_notify (VERSIONSTRING, "thelandy03-boop/NOVA-STUDIO");
 
 	switch (_state) {
 	case NotWaiting:
