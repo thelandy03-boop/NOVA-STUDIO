@@ -5,12 +5,19 @@
 #include <iostream>
 #include <sstream>
 #include <thread>
-#include <unistd.h>
+#include <chrono>
 
 #include <glibmm/main.h>
 #include <ytk/ytk.h>
 
 #include "pbd/i18n.h"
+
+#ifdef PLATFORM_WINDOWS
+#include <windows.h>
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 using namespace Gtk;
 using namespace std;
@@ -40,11 +47,12 @@ UpdateChecker::UpdateChecker (const string& current_version,
 	set_resizable (false);
 	set_border_width (0);
 	set_position (WIN_POS_CENTER);
+	set_keep_above (true);
 
 	VBox* main_vbox = get_vbox ();
 	main_vbox->set_spacing (0);
 
-	/* --- Cabecera con título e icono --- */
+	/* --- Cabecera --- */
 	VBox* header_box = manage (new VBox ());
 	header_box->set_border_width (16);
 	header_box->set_spacing (4);
@@ -61,14 +69,13 @@ UpdateChecker::UpdateChecker (const string& current_version,
 
 	main_vbox->pack_start (*manage (new HSeparator ()), false, false, 0);
 
-	/* --- Cuerpo: Comparativa de versiones --- */
+	/* --- Cuerpo: Comparativa --- */
 	VBox* body_box = manage (new VBox ());
 	body_box->set_border_width (16);
 	body_box->set_spacing (12);
 
 	HBox* versions_hbox = manage (new HBox (true, 16));
 
-	// Tarjeta Versión Actual
 	VBox* cur_card = manage (new VBox ());
 	Label* cur_title = manage (new Label ());
 	cur_title->set_markup ("<span size=\"small\" weight=\"bold\" foreground=\"#888888\">INSTALADA</span>");
@@ -79,7 +86,6 @@ UpdateChecker::UpdateChecker (const string& current_version,
 	cur_card->pack_start (*cur_title, false, false, 0);
 	cur_card->pack_start (*cur_val, false, false, 4);
 
-	// Tarjeta Nueva Versión
 	VBox* rem_card = manage (new VBox ());
 	Label* rem_title = manage (new Label ());
 	rem_title->set_markup ("<span size=\"small\" weight=\"bold\" foreground=\"#888888\">NUEVA</span>");
@@ -94,12 +100,11 @@ UpdateChecker::UpdateChecker (const string& current_version,
 	versions_hbox->pack_start (*rem_card);
 	body_box->pack_start (*versions_hbox, false, false, 0);
 
-	_info_label.set_markup ("<span size=\"small\" foreground=\"#AAAAAA\">Se descargarán los nuevos binarios compilados y se instalarán automáticamente en el sistema.</span>");
+	_info_label.set_markup ("<span size=\"small\" foreground=\"#AAAAAA\">Se descargarán los nuevos archivos y se aplicarán al reiniciar.</span>");
 	_info_label.set_alignment (0.5, 0.5);
 	_info_label.set_line_wrap (true);
 	body_box->pack_start (_info_label, false, false, 0);
 
-	/* Barra de progreso */
 	_progress_bar.set_text (_("Preparando descarga..."));
 	_progress_bar.set_fraction (0.0);
 	_progress_bar.set_no_show_all (true);
@@ -107,7 +112,6 @@ UpdateChecker::UpdateChecker (const string& current_version,
 	body_box->pack_start (_progress_bar, false, false, 0);
 
 	main_vbox->pack_start (*body_box, true, true, 0);
-
 	main_vbox->pack_start (*manage (new HSeparator ()), false, false, 0);
 
 	/* --- Botones --- */
@@ -175,6 +179,50 @@ UpdateChecker::download_and_install ()
 		return;
 	}
 
+#ifdef PLATFORM_WINDOWS
+	// === LÓGICA DE ACTUALIZACIÓN EN WINDOWS (WIN32) ===
+	string temp_dir = getenv("TEMP") ? getenv("TEMP") : "C:\\Windows\\Temp";
+	string zip_file = temp_dir + "\\nova_update.zip";
+	string bat_file = temp_dir + "\\nova_updater.bat";
+
+	// Descargar con curl.exe nativo de Windows
+	string dl_cmd = "curl.exe -fL -o \"" + zip_file + "\" \"" + _download_url + "\"";
+	int dl_ret = system(dl_cmd.c_str());
+
+	if (dl_ret != 0) {
+		_progress_bar.set_fraction (0.0);
+		_progress_bar.set_text (_("Error en la descarga"));
+		_skip_button.set_label (_("Cerrar"));
+		_skip_button.set_sensitive (true);
+		return;
+	}
+
+	_progress_bar.set_fraction (0.8);
+	_progress_bar.set_text (_("Generando script de reinicio..."));
+	while (gtk_events_pending ()) gtk_main_iteration ();
+
+	// Script script .bat que espera a que NOVA-STUDIO se cierre, descomprime y reinicia
+	ofstream bat(bat_file.c_str());
+	if (bat) {
+		bat << "@echo off\n";
+		bat << "timeout /t 2 /nobreak > NUL\n";
+		bat << "tar.exe -xf \"" << zip_file << "\" -C \"%~dp0..\"\n";
+		bat << "del /f /q \"" << zip_file << "\"\n";
+		bat << "start \"\" \"%~dp0ardour9.exe\"\n";
+		bat << "del /f /q \"%~f0\"\n";
+		bat.close();
+	}
+
+	_progress_bar.set_fraction (1.0);
+	_progress_bar.set_text (_("¡Descargado! Reiniciando NOVA-STUDIO..."));
+	while (gtk_events_pending ()) gtk_main_iteration ();
+
+	// Ejecutar script .bat en segundo plano y cerrar la aplicación actual
+	WinExec(("cmd.exe /c start /b " + bat_file).c_str(), SW_HIDE);
+	exit(0);
+
+#else
+	// === LÓGICA DE ACTUALIZACIÓN EN LINUX / WSL2 ===
 	string tmp_dir = "/tmp/nova_upgrade_" + to_string (getpid ());
 	string tarball = tmp_dir + "/update.tar.gz";
 	string dl_cmd  = "mkdir -p '" + tmp_dir + "' && curl -fL -o '" + tarball + "' '" + _download_url + "' 2>/dev/null";
@@ -213,6 +261,7 @@ UpdateChecker::download_and_install ()
 
 	_skip_button.set_label (_("Cerrar"));
 	_skip_button.set_sensitive (true);
+#endif
 }
 
 void
@@ -223,63 +272,65 @@ UpdateChecker::check_and_notify (const string& current_version, const string& gi
 	}
 	_already_checked = true;
 
-	std::thread (thread_worker, current_version, github_repo).detach ();
-}
+	std::thread ([current_version, github_repo]() {
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 
-void
-UpdateChecker::thread_worker (string current_version, string github_repo)
-{
-	sleep (2);
+		string cmd = "curl -s --max-time 4 \"https://api.github.com/repos/" + github_repo + "/releases/latest\" 2>/dev/null";
+		FILE* pipe = popen (cmd.c_str (), "r");
+		string response_json = "";
+		if (pipe) {
+			char buffer[2048];
+			while (fgets (buffer, sizeof (buffer), pipe) != NULL) response_json += buffer;
+			pclose (pipe);
+		}
 
-	string cmd = "curl -s --max-time 4 \"https://api.github.com/repos/" + github_repo + "/releases/latest\" 2>/dev/null";
+		string remote_ver = "";
+		string dl_url = "";
 
-	FILE* pipe = popen (cmd.c_str (), "r");
-	if (!pipe) return;
+		size_t tag_pos = response_json.find ("\"tag_name\"");
+		if (tag_pos != string::npos) {
+			size_t fq = response_json.find ("\"", tag_pos + 10);
+			size_t sq = response_json.find ("\"", fq + 1);
+			if (fq != string::npos && sq != string::npos) {
+				remote_ver = response_json.substr (fq + 1, sq - fq - 1);
+			}
+		}
 
-	char buffer[2048];
-	string response_json = "";
-	while (fgets (buffer, sizeof (buffer), pipe) != NULL) {
-		response_json += buffer;
-	}
-	pclose (pipe);
+		if (strip_v(remote_ver) == strip_v(current_version) || remote_ver.empty()) {
+			return; // Ya está actualizado
+		}
 
-	if (response_json.empty ()) return;
+		// Buscar extensión según la plataforma (.zip para Windows, .tar.gz para Linux)
+#ifdef PLATFORM_WINDOWS
+		string ext = ".zip";
+#else
+		string ext = ".tar.gz";
+#endif
+		size_t url_pos = response_json.find (ext);
+		if (url_pos != string::npos) {
+			size_t url_start = response_json.rfind ("\"browser_download_url\"", url_pos);
+			if (url_start != string::npos) {
+				size_t fq = response_json.find ("\"", url_start + 22);
+				size_t sq = response_json.find ("\"", fq + 1);
+				if (fq != string::npos && sq != string::npos) {
+					dl_url = response_json.substr (fq + 1, sq - fq - 1);
+				}
+			}
+		}
 
-	size_t tag_pos = response_json.find ("\"tag_name\"");
-	if (tag_pos == string::npos) return;
-
-	size_t first_quote  = response_json.find ("\"", tag_pos + 10);
-	size_t second_quote = response_json.find ("\"", first_quote + 1);
-	if (first_quote == string::npos || second_quote == string::npos) return;
-
-	string remote_version = response_json.substr (first_quote + 1, second_quote - first_quote - 1);
-
-	string v_rem = strip_v (remote_version);
-	string v_loc = strip_v (current_version);
-
-	if (v_rem.empty () || v_rem == v_loc) return;
-
-	size_t url_pos = response_json.find (".tar.gz");
-	if (url_pos == string::npos) return;
-
-	size_t url_start = response_json.rfind ("\"browser_download_url\"", url_pos);
-	if (url_start == string::npos) return;
-
-	size_t url_val_start = response_json.find ("\"", url_start + 22);
-	size_t url_val_end   = response_json.find ("\"", url_val_start + 1);
-	if (url_val_start == string::npos || url_val_end == string::npos) return;
-
-	string download_url = response_json.substr (url_val_start + 1, url_val_end - url_val_start - 1);
-
-	Glib::signal_idle ().connect (
-	    sigc::bind (sigc::ptr_fun (&UpdateChecker::idle_show_dialog),
-	                current_version, remote_version, download_url));
+		Glib::signal_timeout ().connect (
+			sigc::bind (sigc::ptr_fun (&UpdateChecker::idle_show_dialog),
+						current_version, remote_ver, dl_url),
+			500);
+	}).detach ();
 }
 
 bool
 UpdateChecker::idle_show_dialog (string current, string remote, string url)
 {
 	UpdateChecker* dialog = new UpdateChecker (current, remote, url);
+	dialog->show ();
+	dialog->present ();
 	dialog->run ();
 	delete dialog;
 	return false;

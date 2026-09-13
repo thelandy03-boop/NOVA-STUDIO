@@ -17,7 +17,6 @@ public:
 	               const std::string& download_url);
 	~UpdateChecker ();
 
-	/* Se llama una sola vez al iniciar la aplicación en StartupFSM */
 	static void check_and_notify (const std::string& current_version,
 	                              const std::string& github_repo);
 
