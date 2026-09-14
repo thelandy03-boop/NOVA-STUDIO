@@ -544,7 +544,7 @@ def configure(conf):
 
     bak = conf.env['define_key']
     conf.define('VERSIONSTRING', conf.env['VERSION'])
-    conf.define('CODENAME', enoify(int(conf.env['MAJOR']), int(conf.env['MINOR'])))
+    conf.define('CODENAME', enoify(int(str(conf.env['MAJOR']).replace('v', '')), int(str(conf.env['MINOR']).split('.')[0])))
     conf.env['define_key'] = ['VERSIONSTRING', 'CODENAME' ]
     conf.write_config_header('gtk2ardour-version.h')
     conf.env['define_key'] = bak
@@ -641,7 +641,7 @@ def build(bld):
 
     # executable version of the GTK GUI
     if bld.env['build_target'] == 'mingw' or bld.env['build_target'] == 'msvc':
-        obj = bld (features = 'cxx c cxxprogram winres')
+        obj = bld (features = 'cxx c cxxprogram')
     else:
         obj = bld (features = 'cxx c cxxprogram')
 
@@ -996,6 +996,7 @@ def build(bld):
 
     # Icons/Images
     bld.install_files(os.path.join (bld.env['DATADIR'], 'icons'), bld.path.ant_glob('icons/*.png'))
+    bld.install_files(os.path.join (bld.env['DATADIR'], 'icons', 'scripting'), bld.path.ant_glob('icons/scripting/*.png'))
     bld.install_files(bld.env['DATADIR'], 'ArdourMono.ttf')
     bld.install_files(bld.env['DATADIR'], 'ArdourSans.ttf')
 

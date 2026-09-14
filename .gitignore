@@ -152,3 +152,9 @@ waf3-*
 
 # misc custom files git should ignore
 /local
+tools/windows_packaging/*.exe
+*.exe
+tools/windows_packaging/*.exe
+*.exe
+tools/windows_packaging/*.exe
+*.exe

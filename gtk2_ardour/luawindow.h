@@ -1,19 +1,6 @@
 /*
  * Copyright (C) 2016-2017 Robin Gareus <robin@gareus.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2026 NOVA-STUDIO Team
  */
 #pragma once
 
@@ -22,9 +9,22 @@
 #include <ytkmm/label.h>
 #include <ytkmm/textview.h>
 #include <ytkmm/window.h>
+#include <ytkmm/paned.h>
+#include <ytkmm/notebook.h>
+#include <ytkmm/treeview.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/treemodelcolumn.h>
+#include <ytkmm/entry.h>
+#include <ytkmm/menubar.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/menuitem.h>
+#include <ytkmm/button.h>
+#include <ytkmm/image.h>
+#include <ytkmm/texttag.h>
 
 #include "pbd/signals.h"
 #include "pbd/stateful.h"
+#include "pbd/convert.h"
 
 #include "ardour/ardour.h"
 #include "ardour/luascripting.h"
@@ -32,12 +32,9 @@
 #include "ardour/types.h"
 
 #include "gtkmm2ext/visibility_tracker.h"
-
 #include "lua/luastate.h"
 
-#include "widgets/ardour_button.h"
 #include "widgets/ardour_dropdown.h"
-
 #include "ardour_window.h"
 
 class LuaWindow :
@@ -49,26 +46,22 @@ public:
 	~LuaWindow();
 
 	void edit_script (const std::string&, const std::string&);
-
 	void set_session (ARDOUR::Session* s);
 
 	typedef enum {
 		Buffer_NOFLAG     = 0x00,
-		Buffer_Valid      = 0x01, ///< script is loaded
+		Buffer_Valid      = 0x01,
 		Buffer_HasFile    = 0x02,
 		Buffer_ReadOnly   = 0x04,
 		Buffer_Dirty      = 0x08,
 		Buffer_Scratch    = 0x10,
 	} BufferFlags;
 
-	class ScriptBuffer
-	{
+	class ScriptBuffer {
 	public:
 		ScriptBuffer (const std::string&);
 		ScriptBuffer (ARDOUR::LuaScriptInfoPtr);
-		//ScriptBuffer (const ScriptBuffer& other);
 		~ScriptBuffer ();
-
 		bool load ();
 
 		std::string script;
@@ -84,6 +77,10 @@ private:
 
 	LuaState *lua;
 
+	Gtk::MenuBar _main_menubar;
+	Gtk::VPaned _main_vpaned;
+	Gtk::HPaned _top_hpaned;
+
 	Gtk::Menu* _menu_scratch;
 	Gtk::Menu* _menu_snippet;
 	Gtk::Menu* _menu_actions;
@@ -91,17 +88,46 @@ private:
 	sigc::connection _script_changed_connection;
 
 	Gtk::TextView entry;
+	Gtk::TextView _line_numbers;
 	Gtk::TextView outtext;
+	Gtk::ScrolledWindow scrollin;
 	Gtk::ScrolledWindow scrollout;
 
-	ArdourWidgets::ArdourButton _btn_run;
-	ArdourWidgets::ArdourButton _btn_clear;
-	ArdourWidgets::ArdourButton _btn_open;
-	ArdourWidgets::ArdourButton _btn_save;
-	ArdourWidgets::ArdourButton _btn_delete;
-	ArdourWidgets::ArdourButton _btn_revert;
+	Glib::RefPtr<Gtk::TextTag> _tag_kw;
+	Glib::RefPtr<Gtk::TextTag> _tag_cmt;
+	Glib::RefPtr<Gtk::TextTag> _tag_str;
+	Glib::RefPtr<Gtk::TextTag> _tag_act;
+
+	Gtk::Button _btn_run;
+	Gtk::Button _btn_pause;
+	Gtk::Button _btn_stop;
+	Gtk::Button _btn_autorun;
+
+	Gtk::Entry _api_search_entry;
+
+	Gtk::Button _btn_open;
+	Gtk::Button _btn_save;
+	Gtk::Button _btn_delete;
+	Gtk::Button _btn_options;
+
+	Gtk::Button _btn_clear;
+	Gtk::Button _btn_revert;
+	Gtk::Button _btn_add_watch;
 
 	ArdourWidgets::ArdourDropdown script_select;
+
+	struct InspectorColumns : public Gtk::TreeModel::ColumnRecord {
+		InspectorColumns() { add(col_name); add(col_value); }
+		Gtk::TreeModelColumn<std::string> col_name;
+		Gtk::TreeModelColumn<std::string> col_value;
+	};
+	InspectorColumns _inspector_cols;
+	Gtk::TreeView _tree_inspector;
+	Glib::RefPtr<Gtk::ListStore> _model_inspector;
+
+	Gtk::Notebook _notebook_bottom;
+	Gtk::Label _lbl_status_pos;
+	Gtk::Label _lbl_lua_ver;
 
 	typedef std::shared_ptr<ScriptBuffer> ScriptBufferPtr;
 	typedef std::vector<ScriptBufferPtr> ScriptBufferList;
@@ -109,6 +135,10 @@ private:
 	ScriptBufferList script_buffers;
 	ScriptBufferPtr _current_buffer;
 
+	void setup_ui ();
+	void build_menubar ();
+	void set_btn_icon_and_text (Gtk::Button& btn, const std::string& icon_filename, const std::string& text);
+	
 	void session_going_away ();
 	void update_title ();
 	void reinit_lua ();
@@ -121,18 +151,20 @@ private:
 	void script_changed ();
 	void script_selection_changed (ScriptBufferPtr n, bool force = false);
 	void update_gui_state ();
+	void update_inspector_values ();
+	void on_cursor_position_changed (const Gtk::TextBuffer::iterator&, const Glib::RefPtr<Gtk::TextBuffer::Mark>&);
+	
+	void update_line_numbers ();
+	void highlight_syntax ();
 
 	void append_text (std::string s);
 	void scroll_to_bottom ();
 	void clear_output ();
 
 	void run_script ();
-
 	void new_script ();
 	void delete_script ();
 	void revert_script ();
 	void import_script ();
 	void save_script ();
 };
-
-

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <vector>
 
 #include <glibmm/main.h>
 #include <ytk/ytk.h>
@@ -24,21 +25,40 @@ using namespace std;
 
 bool UpdateChecker::_already_checked = false;
 
+// Normalizador inteligente de versiones (ej: "v9.8.32.0" -> "9.8.32")
 static string
-strip_v (string v)
+normalize_ver (string v)
 {
 	if (!v.empty () && (v[0] == 'v' || v[0] == 'V')) {
-		return v.substr (1);
+		v = v.substr (1);
 	}
-	return v;
+	stringstream ss(v);
+	string item;
+	vector<int> parts;
+	while (getline(ss, item, '.')) {
+		try {
+			parts.push_back(stoi(item));
+		} catch (...) {
+			parts.push_back(0);
+		}
+	}
+	while (parts.size() > 3 && parts.back() == 0) {
+		parts.pop_back(); // Eliminar el cuarto digito .0
+	}
+	string result = "";
+	for (size_t i = 0; i < parts.size(); ++i) {
+		if (i > 0) result += ".";
+		result += to_string(parts[i]);
+	}
+	return result;
 }
 
 UpdateChecker::UpdateChecker (const string& current_version,
                               const string& remote_version,
                               const string& download_url)
 	: ArdourDialog (_("NOVA-STUDIO — Actualización disponible"), true, false)
-	, _current_version (strip_v (current_version))
-	, _remote_version (strip_v (remote_version))
+	, _current_version (normalize_ver (current_version))
+	, _remote_version (normalize_ver (remote_version))
 	, _download_url (download_url)
 	, _update_button (_("Actualizar ahora"))
 	, _skip_button (_("Más tarde"))
@@ -180,12 +200,10 @@ UpdateChecker::download_and_install ()
 	}
 
 #ifdef PLATFORM_WINDOWS
-	// === LÓGICA DE ACTUALIZACIÓN EN WINDOWS (WIN32) ===
 	string temp_dir = getenv("TEMP") ? getenv("TEMP") : "C:\\Windows\\Temp";
 	string zip_file = temp_dir + "\\nova_update.zip";
 	string bat_file = temp_dir + "\\nova_updater.bat";
 
-	// Descargar con curl.exe nativo de Windows
 	string dl_cmd = "curl.exe -fL -o \"" + zip_file + "\" \"" + _download_url + "\"";
 	int dl_ret = system(dl_cmd.c_str());
 
@@ -201,14 +219,13 @@ UpdateChecker::download_and_install ()
 	_progress_bar.set_text (_("Generando script de reinicio..."));
 	while (gtk_events_pending ()) gtk_main_iteration ();
 
-	// Script script .bat que espera a que NOVA-STUDIO se cierre, descomprime y reinicia
 	ofstream bat(bat_file.c_str());
 	if (bat) {
 		bat << "@echo off\n";
 		bat << "timeout /t 2 /nobreak > NUL\n";
 		bat << "tar.exe -xf \"" << zip_file << "\" -C \"%~dp0..\"\n";
 		bat << "del /f /q \"" << zip_file << "\"\n";
-		bat << "start \"\" \"%~dp0ardour9.exe\"\n";
+		bat << "start \"\" \"%~dp0NOVA-STUDIO.exe\"\n";
 		bat << "del /f /q \"%~f0\"\n";
 		bat.close();
 	}
@@ -217,12 +234,9 @@ UpdateChecker::download_and_install ()
 	_progress_bar.set_text (_("¡Descargado! Reiniciando NOVA-STUDIO..."));
 	while (gtk_events_pending ()) gtk_main_iteration ();
 
-	// Ejecutar script .bat en segundo plano y cerrar la aplicación actual
 	WinExec(("cmd.exe /c start /b " + bat_file).c_str(), SW_HIDE);
 	exit(0);
-
 #else
-	// === LÓGICA DE ACTUALIZACIÓN EN LINUX / WSL2 ===
 	string tmp_dir = "/tmp/nova_upgrade_" + to_string (getpid ());
 	string tarball = tmp_dir + "/update.tar.gz";
 	string dl_cmd  = "mkdir -p '" + tmp_dir + "' && curl -fL -o '" + tarball + "' '" + _download_url + "' 2>/dev/null";
@@ -296,13 +310,13 @@ UpdateChecker::check_and_notify (const string& current_version, const string& gi
 			}
 		}
 
-		if (strip_v(remote_ver) == strip_v(current_version) || remote_ver.empty()) {
+		// Comparación normalizada sin fallos por el cuarto dígito .0
+		if (normalize_ver(remote_ver) == normalize_ver(current_version) || remote_ver.empty()) {
 			return; // Ya está actualizado
 		}
 
-		// Buscar extensión según la plataforma (.zip para Windows, .tar.gz para Linux)
 #ifdef PLATFORM_WINDOWS
-		string ext = ".zip";
+		string ext = ".exe"; // En Windows busca el instalador .exe o .zip
 #else
 		string ext = ".tar.gz";
 #endif
