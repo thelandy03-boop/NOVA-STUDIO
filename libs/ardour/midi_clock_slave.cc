@@ -429,7 +429,7 @@ MIDIClock_TransportMaster::delta_string() const
 	current.safe_read (last);
 
 	if (last.timestamp == 0 || starting()) {
-		return (const char*)(u8"\u2012\u2012\u2012\u2012");
+		return (const char*)("\u2012\u2012\u2012\u2012");
 	} else {
 		return format_delta_time (_current_delta);
 	}
