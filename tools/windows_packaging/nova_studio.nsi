@@ -4,7 +4,7 @@
 !define PRODUCT_PUBLISHER "NOVA-STUDIO Team"
 !define PRODUCT_WEB_SITE "https://github.com/thelandy03-boop/NOVA-STUDIO"
 
-SetCompressor /SOLID lzma
+SetCompressor lzma
 
 Name "${PRODUCT_NAME}"
 OutFile "NOVA-STUDIO-Setup.exe"

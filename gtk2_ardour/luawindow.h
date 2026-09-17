@@ -20,7 +20,6 @@
 #include <ytkmm/menuitem.h>
 #include <ytkmm/button.h>
 #include <ytkmm/image.h>
-#include <ytkmm/texttag.h>
 
 #include "pbd/signals.h"
 #include "pbd/stateful.h"
@@ -36,6 +35,7 @@
 
 #include "widgets/ardour_dropdown.h"
 #include "ardour_window.h"
+#include "nova_script_editor.h"
 
 class LuaWindow :
 	public ArdourWindow,
@@ -87,16 +87,11 @@ private:
 
 	sigc::connection _script_changed_connection;
 
-	Gtk::TextView entry;
-	Gtk::TextView _line_numbers;
+	NovaScriptEditor editor;
+
 	Gtk::TextView outtext;
 	Gtk::ScrolledWindow scrollin;
 	Gtk::ScrolledWindow scrollout;
-
-	Glib::RefPtr<Gtk::TextTag> _tag_kw;
-	Glib::RefPtr<Gtk::TextTag> _tag_cmt;
-	Glib::RefPtr<Gtk::TextTag> _tag_str;
-	Glib::RefPtr<Gtk::TextTag> _tag_act;
 
 	Gtk::Button _btn_run;
 	Gtk::Button _btn_pause;
@@ -125,6 +120,7 @@ private:
 	Gtk::TreeView _tree_inspector;
 	Glib::RefPtr<Gtk::ListStore> _model_inspector;
 
+	Gtk::Notebook _editor_notebook;
 	Gtk::Notebook _notebook_bottom;
 	Gtk::Label _lbl_status_pos;
 	Gtk::Label _lbl_lua_ver;
@@ -152,10 +148,7 @@ private:
 	void script_selection_changed (ScriptBufferPtr n, bool force = false);
 	void update_gui_state ();
 	void update_inspector_values ();
-	void on_cursor_position_changed (const Gtk::TextBuffer::iterator&, const Glib::RefPtr<Gtk::TextBuffer::Mark>&);
-	
-	void update_line_numbers ();
-	void highlight_syntax ();
+	void on_cursor_position_changed ();
 
 	void append_text (std::string s);
 	void scroll_to_bottom ();

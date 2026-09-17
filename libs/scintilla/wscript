@@ -1,0 +1,101 @@
+#!/usr/bin/env python
+import os
+
+def options(opt):
+    pass
+
+def configure(conf):
+    pass
+
+def build(bld):
+    # Generar de forma dinámica headers de redirección para compatibilidad total con YTK/YDK
+    compat_dir = bld.path.make_node('compat_headers')
+    
+    def make_compat_header(subpath, content):
+        node = compat_dir.make_node(subpath)
+        node.parent.mkdir()
+        node.write(content)
+
+    make_compat_header('gtk/gtk.h', '#pragma once\n#include <ytk/ytk.h>\n')
+    make_compat_header('gdk/gdk.h', '#pragma once\n#include <ydk/gdk.h>\n')
+    make_compat_header('gdk/gdkkeysyms.h', '#pragma once\n#include <ydk/gdkkeysyms.h>\n')
+    make_compat_header('gdk/gdkwin32.h', '#pragma once\n#include <ydk/gdkwin32.h>\n')
+
+    sources = [
+        'src/AutoComplete.cxx',
+        'src/CallTip.cxx',
+        'src/CaseConvert.cxx',
+        'src/CaseFolder.cxx',
+        'src/Catalogue.cxx',
+        'src/CellBuffer.cxx',
+        'src/CharClassify.cxx',
+        'src/ContractionState.cxx',
+        'src/DBCS.cxx',
+        'src/Decoration.cxx',
+        'src/Document.cxx',
+        'src/EditModel.cxx',
+        'src/Editor.cxx',
+        'src/EditView.cxx',
+        'src/ExternalLexer.cxx',
+        'src/Indicator.cxx',
+        'src/KeyMap.cxx',
+        'src/LineMarker.cxx',
+        'src/MarginView.cxx',
+        'src/PerLine.cxx',
+        'src/PositionCache.cxx',
+        'src/RESearch.cxx',
+        'src/RunStyles.cxx',
+        'src/ScintillaBase.cxx',
+        'src/Selection.cxx',
+        'src/Style.cxx',
+        'src/UniConversion.cxx',
+        'src/ViewStyle.cxx',
+        'src/XPM.cxx',
+        'lexlib/Accessor.cxx',
+        'lexlib/CharacterCategory.cxx',
+        'lexlib/CharacterSet.cxx',
+        'lexlib/DefaultLexer.cxx',
+        'lexlib/LexerBase.cxx',
+        'lexlib/LexerModule.cxx',
+        'lexlib/LexerNoExceptions.cxx',
+        'lexlib/LexerSimple.cxx',
+        'lexlib/PropSetSimple.cxx',
+        'lexlib/StyleContext.cxx',
+        'lexlib/WordList.cxx',
+        'gtk/ScintillaGTK.cxx',
+        'gtk/PlatGTK.cxx',
+        'gtk/scintilla-marshal.c'
+    ]
+
+    lexer_files = bld.path.ant_glob('lexers/Lex*.cxx')
+    for f in lexer_files:
+        sources.append(f.path_from(bld.path))
+
+    inc_dirs = [
+        'compat_headers',
+        '.', 
+        'include', 
+        'src', 
+        'lexlib', 
+        'gtk',
+        '../tk/ytk',
+        '../tk/ydk',
+        '../tk/ydk-pixbuf',
+        '/mingw64/include/gdk-pixbuf-2.0',
+        '/mingw64/include/glib-2.0',
+        '/mingw64/lib/glib-2.0/include',
+        '/mingw64/include/pango-1.0',
+        '/mingw64/include/cairo'
+    ]
+
+    obj = bld(features='c cxx cxxstlib')
+    obj.source = sources
+    obj.target = 'scintilla'
+    obj.name = 'libscintilla'
+    obj.includes = inc_dirs
+    obj.export_includes = ['include', 'gtk', 'src', 'lexlib', '.', 'compat_headers'] + inc_dirs
+    obj.use = ['libydk', 'libytk', 'libydkmm', 'libytkmm', 'libydk-pixbuf']
+    obj.uselib = 'GLIB GLIBMM CAIRO CAIROMM PANGO PANGOMM PANGOCAIRO SIGCPP GIO GIOMM'
+    obj.defines = ['SCI_LEXER', 'GTK', 'NO_ACCESSIBILITY', 'GTK_COMPILATION']
+    obj.cxxflags = ['-Wno-deprecated-declarations']
+    obj.cflags = ['-Wno-deprecated-declarations']

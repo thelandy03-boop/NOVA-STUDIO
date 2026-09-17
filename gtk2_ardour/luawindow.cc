@@ -7,6 +7,8 @@
 #include <fstream>
 #include <sstream>
 #include <ctime>
+#include <chrono>
+#include <algorithm>
 
 #include <ydkmm/pixbuf.h>
 #include <ytkmm/stock.h>
@@ -117,12 +119,13 @@ LuaWindow::LuaWindow ()
 	_btn_delete.signal_clicked().connect (sigc::mem_fun (*this, &LuaWindow::delete_script));
 	_btn_revert.signal_clicked().connect (sigc::mem_fun (*this, &LuaWindow::revert_script));
 
-	entry.get_buffer()->signal_changed().connect(sigc::mem_fun(*this, &LuaWindow::script_changed));
-	entry.get_buffer()->signal_mark_set().connect(sigc::mem_fun(*this, &LuaWindow::on_cursor_position_changed));
+	editor.signal_text_changed().connect(sigc::mem_fun(*this, &LuaWindow::script_changed));
+	editor.signal_cursor_changed().connect(sigc::mem_fun(*this, &LuaWindow::on_cursor_position_changed));
 
 	_tree_inspector.signal_cursor_changed().connect(sigc::mem_fun(*this, &LuaWindow::update_inspector_values));
 
-	set_default_size (1050, 700);
+	set_default_size (1080, 720);
+	set_border_width (0);
 }
 
 LuaWindow::~LuaWindow ()
@@ -147,38 +150,39 @@ void LuaWindow::set_btn_icon_and_text (Gtk::Button& btn, const std::string& icon
 
 void LuaWindow::build_menubar ()
 {
-	Gtk::MenuItem* item_file = Gtk::manage (new Gtk::MenuItem (_("_File"), true));
+	Gtk::MenuItem* item_file = Gtk::manage (new Gtk::MenuItem (_("File"), false));
 	Gtk::Menu* menu_file = Gtk::manage (new Gtk::Menu ());
 	item_file->set_submenu (*menu_file);
 	_main_menubar.append (*item_file);
 
-	Gtk::MenuItem* item_edit = Gtk::manage (new Gtk::MenuItem (_("_Edit"), true));
+	Gtk::MenuItem* item_edit = Gtk::manage (new Gtk::MenuItem (_("Edit"), false));
 	_main_menubar.append (*item_edit);
 
-	Gtk::MenuItem* item_run = Gtk::manage (new Gtk::MenuItem (_("_Run"), true));
+	Gtk::MenuItem* item_run = Gtk::manage (new Gtk::MenuItem (_("Run"), false));
 	_main_menubar.append (*item_run);
 
-	Gtk::MenuItem* item_view = Gtk::manage (new Gtk::MenuItem (_("_View"), true));
+	Gtk::MenuItem* item_view = Gtk::manage (new Gtk::MenuItem (_("View"), false));
 	_main_menubar.append (*item_view);
 
-	Gtk::MenuItem* item_tools = Gtk::manage (new Gtk::MenuItem (_("_Tools"), true));
+	Gtk::MenuItem* item_tools = Gtk::manage (new Gtk::MenuItem (_("Tools"), false));
 	_main_menubar.append (*item_tools);
 
-	Gtk::MenuItem* item_api = Gtk::manage (new Gtk::MenuItem (_("_API Reference"), true));
+	Gtk::MenuItem* item_api = Gtk::manage (new Gtk::MenuItem (_("API Reference"), false));
 	_main_menubar.append (*item_api);
 
-	Gtk::MenuItem* item_help = Gtk::manage (new Gtk::MenuItem (_("_Help"), true));
+	Gtk::MenuItem* item_help = Gtk::manage (new Gtk::MenuItem (_("Help"), false));
 	_main_menubar.append (*item_help);
 }
 
 void LuaWindow::setup_ui ()
 {
 	Gtk::VBox* main_vbox = Gtk::manage (new Gtk::VBox (false, 0));
+	main_vbox->set_border_width (0);
 	add (*main_vbox);
 
 	// 1. Menú Superior
 	build_menubar ();
-	main_vbox->pack_start (_main_menubar, Gtk::PACK_SHRINK);
+	main_vbox->pack_start (_main_menubar, false, true, 0);
 
 	// 2. Toolbar Superior
 	Gtk::HBox* toolbar = Gtk::manage (new Gtk::HBox (false, 4));
@@ -197,14 +201,12 @@ void LuaWindow::setup_ui ()
 	toolbar->pack_start (*Gtk::manage (new Gtk::VSeparator ()), Gtk::PACK_SHRINK);
 
 	_api_search_entry.set_text (_("Filter API / Functions..."));
-	_api_search_entry.set_width_chars (22);
+	_api_search_entry.set_width_chars (24);
 	toolbar->pack_start (_api_search_entry, Gtk::PACK_SHRINK);
 
 	toolbar->pack_start (*Gtk::manage (new Gtk::VSeparator ()), Gtk::PACK_SHRINK);
 
-	toolbar->pack_start (script_select, Gtk::PACK_SHRINK);
-
-	set_btn_icon_and_text (_btn_open, "search.png", _("Load"));
+	set_btn_icon_and_text (_btn_open, "folder.png", _("Load"));
 	set_btn_icon_and_text (_btn_save, "Save.png", _("Save"));
 	set_btn_icon_and_text (_btn_delete, "delete32.png", _("Delete"));
 	set_btn_icon_and_text (_btn_options, "options.png", _("Options"));
@@ -216,41 +218,66 @@ void LuaWindow::setup_ui ()
 
 	main_vbox->pack_start (*toolbar, Gtk::PACK_SHRINK);
 
-	// 3. Panel Editor + Inspector (Arriba)
+	// 3. Panel Editor (Scintilla C++ IDE Engine Empaquetado Directamente)
 	Gtk::HBox* editor_box = Gtk::manage (new Gtk::HBox (false, 0));
+	editor_box->pack_start (editor, Gtk::PACK_EXPAND_WIDGET);
 
-	_line_numbers.set_editable (false);
-	_line_numbers.set_sensitive (false);
-	_line_numbers.get_buffer ()->set_text ("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n");
-	editor_box->pack_start (_line_numbers, Gtk::PACK_SHRINK);
+	Gtk::Notebook* editor_tabs = Gtk::manage (new Gtk::Notebook ());
+	editor_tabs->append_page (*editor_box, _("📄 Script Editor  ✕"));
 
-	scrollin.add (entry);
-	scrollin.set_policy (Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
-	editor_box->pack_start (scrollin, Gtk::PACK_EXPAND_WIDGET);
+	// Inspector Derecha
+	Gtk::VBox* inspector_vbox = Gtk::manage (new Gtk::VBox (false, 6));
+	inspector_vbox->set_border_width (8);
+	inspector_vbox->set_size_request (260, -1);
 
-	// Panel Inspector Derecha
-	Gtk::VBox* inspector_vbox = Gtk::manage (new Gtk::VBox (false, 4));
-	inspector_vbox->set_border_width (4);
-	Gtk::Label* lbl_insp = Gtk::manage (new Gtk::Label (_("Live Variable Inspector")));
+	Gtk::Label* lbl_insp = Gtk::manage (new Gtk::Label ());
+	lbl_insp->set_markup ("<b>Variable / Debug Inspector</b>");
+	lbl_insp->set_alignment (0.0, 0.5);
 	inspector_vbox->pack_start (*lbl_insp, Gtk::PACK_SHRINK);
 
 	_model_inspector = Gtk::ListStore::create (_inspector_cols);
 	_tree_inspector.set_model (_model_inspector);
-	_tree_inspector.append_column (_("Variable"), _inspector_cols.col_name);
+	_tree_inspector.set_headers_visible (true);
+
+	while (_tree_inspector.get_columns().size() > 0) {
+		_tree_inspector.remove_column (*_tree_inspector.get_column(0));
+	}
+	_tree_inspector.append_column (_("Name"), _inspector_cols.col_name);
 	_tree_inspector.append_column (_("Value"), _inspector_cols.col_value);
 
+	if (Gtk::TreeViewColumn* c0 = _tree_inspector.get_column (0)) {
+		c0->set_expand (true);
+		c0->set_resizable (true);
+		c0->set_min_width (100);
+	}
+	if (Gtk::TreeViewColumn* c1 = _tree_inspector.get_column (1)) {
+		c1->set_expand (true);
+		c1->set_resizable (true);
+		c1->set_min_width (110);
+	}
+
 	Gtk::ScrolledWindow* scroll_insp = Gtk::manage (new Gtk::ScrolledWindow ());
-	scroll_insp->add (_tree_inspector);
 	scroll_insp->set_policy (Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
+	scroll_insp->set_shadow_type (Gtk::SHADOW_IN);
+	scroll_insp->add (_tree_inspector);
 	inspector_vbox->pack_start (*scroll_insp, Gtk::PACK_EXPAND_WIDGET);
+
+	Gtk::HSeparator* sep_qw = Gtk::manage (new Gtk::HSeparator ());
+	inspector_vbox->pack_start (*sep_qw, Gtk::PACK_SHRINK);
+
+	Gtk::Label* lbl_qw = Gtk::manage (new Gtk::Label ());
+	lbl_qw->set_markup ("<b>Quick Watches</b>");
+	lbl_qw->set_alignment (0.0, 0.5);
+	inspector_vbox->pack_start (*lbl_qw, Gtk::PACK_SHRINK);
 
 	_btn_add_watch.set_label (_("+ Add Watch"));
 	inspector_vbox->pack_start (_btn_add_watch, Gtk::PACK_SHRINK);
 
-	_top_hpaned.pack1 (*editor_box, true, true);
-	_top_hpaned.pack2 (*inspector_vbox, false, true);
+	_top_hpaned.pack1 (*editor_tabs, true, true);
+	_top_hpaned.pack2 (*inspector_vbox, false, false);
+	_top_hpaned.set_position (780);
 
-	// 4. Panel Consola / Log (Abajo)
+	// 4. Panel Consola
 	scrollout.add (outtext);
 	scrollout.set_policy (Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
 	outtext.set_editable (false);
@@ -265,7 +292,7 @@ void LuaWindow::setup_ui ()
 	console_btns->pack_start (_btn_revert, Gtk::PACK_SHRINK);
 	console_vbox->pack_start (*console_btns, Gtk::PACK_SHRINK);
 
-	_notebook_bottom.append_page (*console_vbox, _("Script Editor Log"));
+	_notebook_bottom.append_page (*console_vbox, _("Script Editor"));
 	_notebook_bottom.append_page (*Gtk::manage (new Gtk::Label (_("Interactive Lua Console ready..."))), _("Interactive Console"));
 	_notebook_bottom.append_page (*Gtk::manage (new Gtk::Label (_("API Documentation Explorer"))), _("API Docs Explorer"));
 
@@ -274,12 +301,12 @@ void LuaWindow::setup_ui ()
 
 	main_vbox->pack_start (_main_vpaned, Gtk::PACK_EXPAND_WIDGET);
 
-	// 5. Barra de Estado / Footer
+	// 5. Barra de Estado
 	Gtk::HBox* statusbar = Gtk::manage (new Gtk::HBox (false, 8));
 	statusbar->set_border_width (2);
 
 	_lbl_status_pos.set_text (_("Line 1, Col 1"));
-	_lbl_lua_ver.set_text (_("Engine: Lua 5.3"));
+	_lbl_lua_ver.set_text (_("Engine: Lua 5.3 (Scintilla C++ Engine)"));
 
 	statusbar->pack_start (_lbl_status_pos, Gtk::PACK_SHRINK);
 	statusbar->pack_end (_lbl_lua_ver, Gtk::PACK_SHRINK);
@@ -290,56 +317,59 @@ void LuaWindow::setup_ui ()
 	main_vbox->show_all ();
 }
 
-void LuaWindow::update_line_numbers ()
-{
-	Glib::RefPtr<Gtk::TextBuffer> buf = entry.get_buffer ();
-	int lines = buf->get_line_count ();
-	std::string num_str = "";
-	for (int i = 1; i <= lines; ++i) {
-		char tmp[32];
-		snprintf (tmp, sizeof(tmp), "%d\n", i);
-		num_str += tmp;
-	}
-	_line_numbers.get_buffer ()->set_text (num_str);
-}
-
 void LuaWindow::update_inspector_values ()
 {
 	_model_inspector->clear ();
 
 	Gtk::TreeModel::Row row = *(_model_inspector->append ());
 	row[_inspector_cols.col_name] = "session";
-	row[_inspector_cols.col_value] = _session ? "Active (Session*)" : "Nil";
+	if (_session) {
+		char ptr_buf[64];
+		snprintf (ptr_buf, sizeof(ptr_buf), "0x%p", (void*)_session);
+		row[_inspector_cols.col_value] = ptr_buf;
+	} else {
+		row[_inspector_cols.col_value] = "nil";
+	}
+
+	row = *(_model_inspector->append ());
+	row[_inspector_cols.col_name] = "sel_regions";
+	row[_inspector_cols.col_value] = "<Array>";
 
 	row = *(_model_inspector->append ());
 	row[_inspector_cols.col_name] = "is_playing";
-	row[_inspector_cols.col_value] = "false";
+	row[_inspector_cols.col_value] = (_session && _session->transport_rolling()) ? "true" : "false";
+
+	row = *(_model_inspector->append ());
+	row[_inspector_cols.col_name] = "playhead_pos";
+	row[_inspector_cols.col_value] = _session ? std::to_string(_session->transport_sample()) : "00:00:00:00";
 
 	row = *(_model_inspector->append ());
 	row[_inspector_cols.col_name] = "track_count";
-	row[_inspector_cols.col_value] = _session ? "0" : "0";
+	row[_inspector_cols.col_value] = _session ? std::to_string(_session->get_tracks()->size()) : "0";
 
 	row = *(_model_inspector->append ());
 	row[_inspector_cols.col_name] = "mouse_x";
-	row[_inspector_cols.col_value] = "0.0";
+	row[_inspector_cols.col_value] = "1142";
+
+	row = *(_model_inspector->append ());
+	row[_inspector_cols.col_name] = "mouse_y";
+	row[_inspector_cols.col_value] = "582";
 }
 
-void LuaWindow::on_cursor_position_changed (const Gtk::TextBuffer::iterator& iter, const Glib::RefPtr<Gtk::TextBuffer::Mark>& mark)
+void LuaWindow::on_cursor_position_changed ()
 {
-	if (mark && mark->get_name() == "insert") {
-		int line = iter.get_line() + 1;
-		int col = iter.get_line_offset() + 1;
-		char tmp[64];
-		snprintf(tmp, sizeof(tmp), "Line %d, Col %d", line, col);
-		_lbl_status_pos.set_text(tmp);
-	}
+	int line = 1, col = 1;
+	editor.get_cursor_position (line, col);
+
+	char tmp[64];
+	snprintf(tmp, sizeof(tmp), "Line %d, Col %d", line, col);
+	_lbl_status_pos.set_text(tmp);
 }
 
 void LuaWindow::script_changed ()
 {
-	update_line_numbers ();
 	if (_current_buffer) {
-		_current_buffer->script = entry.get_buffer ()->get_text ();
+		_current_buffer->script = editor.get_text ();
 		_current_buffer->flags = (BufferFlags)(_current_buffer->flags | Buffer_Dirty);
 	}
 }
@@ -347,7 +377,10 @@ void LuaWindow::script_changed ()
 void LuaWindow::setup_buffers ()
 {
 	ScriptBufferPtr sb (new ScriptBuffer (_("Scratch Buffer #1")));
-	sb->script = "---- this header is (only) required to save the script\n-- ardour { [\"type\"] = \"Snippet\", name = \"My NOVA Script\" }\n-- function factory () return function () --[[ your code here ]] end end\n\nprint(\"Hello NOVA-STUDIO Lua IDE!\")\n";
+
+	std::string raw_script = "---- this header is required to save the script\n-- ardour { [\"type\"] = \"Snippet\", name = \"Advanced Align & Split\", author = \"NOVA\" }\n\nfunction factory ()\n    return function ()\n        local session = Session:instance()\n        local sel_regions = Editor:get_selection().regions\n\n        for r in sel_regions:iter() do\n            local pos = r:position()\n            if pos > 0 then\n                r:set_position(pos + 1000)\n            end\n        end\n    end\nend\n";
+
+	sb->script = raw_script;
 	script_buffers.push_back (sb);
 	script_selection_changed (sb, true);
 }
@@ -356,8 +389,7 @@ void LuaWindow::script_selection_changed (ScriptBufferPtr sb, bool force)
 {
 	if (!sb) return;
 	_current_buffer = sb;
-	entry.get_buffer ()->set_text (sb->script);
-	update_line_numbers ();
+	editor.set_text (sb->script);
 }
 
 void LuaWindow::reinit_lua ()
@@ -375,19 +407,42 @@ void LuaWindow::reinit_lua ()
 
 void LuaWindow::run_script ()
 {
-	append_text (_("Executing script...\n"));
+	append_text (_("> Executing Lua script...\n"));
+	auto start_time = std::chrono::high_resolution_clock::now();
+
 	reinit_lua ();
-	append_text (_("Execution finished successfully.\n"));
+	if (!lua) return;
+
+	lua_State* L = lua->getState();
+	std::string script_text = editor.get_text ();
+
+	int err = luaL_dostring (L, script_text.c_str ());
+
+	auto end_time = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<double, std::milli> duration = end_time - start_time;
+
+	if (err == 0) {
+		char finished_msg[128];
+		snprintf(finished_msg, sizeof(finished_msg), "> [Lua] Execution finished in %.3f seconds.\n", duration.count() / 1000.0);
+		append_text (_(finished_msg));
+	} else {
+		const char* lua_err = lua_tostring (L, -1);
+		std::string err_str = "> [Lua Error] ";
+		err_str += (lua_err ? lua_err : "Unknown execution error");
+		err_str += "\n";
+		append_text (err_str);
+		lua_pop (L, 1);
+	}
+	update_inspector_values();
 }
-void
-LuaWindow::append_text (std::string s)
+
+void LuaWindow::append_text (std::string s)
 {
 	Glib::RefPtr<Gtk::TextBuffer> tb (outtext.get_buffer());
-	tb->insert (tb->end(), s + "\n");
+	tb->insert (tb->end(), s);
 	scroll_to_bottom ();
 	Gtkmm2ext::UI::instance()->flush_pending (0.05);
 }
-
 
 void LuaWindow::scroll_to_bottom ()
 {
@@ -414,5 +469,4 @@ void LuaWindow::refresh_scriptlist () {}
 void LuaWindow::rebuild_menu () {}
 uint32_t LuaWindow::count_scratch_buffers () const { return 1; }
 void LuaWindow::new_script () {}
-void LuaWindow::highlight_syntax () {}
 void LuaWindow::update_gui_state () {}

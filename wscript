@@ -1003,6 +1003,7 @@ def configure(conf):
     conf.env['MICRO'] = MICRO
     conf.line_just = 52
     autowaf.set_recursive()
+    bld.recurse('libs/scintilla')
     autowaf.configure(conf)
     autowaf.display_header('Ardour Configuration')
 
@@ -1639,6 +1640,7 @@ def build(bld):
     bld.env['lwrcase_dirname'] = lwrcase_dirname
 
     autowaf.set_recursive()
+    bld.recurse('libs/scintilla')
 
     if sys.platform == 'darwin':
         bld.recurse('libs/appleutility')
