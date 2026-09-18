@@ -1,6 +1,7 @@
 #include "update_checker.h"
 
 #include <cstdlib>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -25,7 +26,7 @@ using namespace std;
 
 bool UpdateChecker::_already_checked = false;
 
-// Normalizador inteligente de versiones (ej: "v9.8.32.0" -> "9.8.32")
+// Normalizador inteligente de versiones (ej: "v9.8.35.0" -> "9.8.35")
 static string
 normalize_ver (string v)
 {
@@ -43,7 +44,7 @@ normalize_ver (string v)
 		}
 	}
 	while (parts.size() > 3 && parts.back() == 0) {
-		parts.pop_back(); // Eliminar el cuarto digito .0
+		parts.pop_back();
 	}
 	string result = "";
 	for (size_t i = 0; i < parts.size(); ++i) {
@@ -120,7 +121,7 @@ UpdateChecker::UpdateChecker (const string& current_version,
 	versions_hbox->pack_start (*rem_card);
 	body_box->pack_start (*versions_hbox, false, false, 0);
 
-	_info_label.set_markup ("<span size=\"small\" foreground=\"#AAAAAA\">Se descargarán los nuevos archivos y se aplicarán al reiniciar.</span>");
+	_info_label.set_markup ("<span size=\"small\" foreground=\"#AAAAAA\">Se descargará el instalador oficial y se aplicará automáticamente.</span>");
 	_info_label.set_alignment (0.5, 0.5);
 	_info_label.set_line_wrap (true);
 	body_box->pack_start (_info_label, false, false, 0);
@@ -201,10 +202,11 @@ UpdateChecker::download_and_install ()
 
 #ifdef PLATFORM_WINDOWS
 	string temp_dir = getenv("TEMP") ? getenv("TEMP") : "C:\\Windows\\Temp";
-	string zip_file = temp_dir + "\\nova_update.zip";
+	string exe_file = temp_dir + "\\nova_studio_setup.exe";
 	string bat_file = temp_dir + "\\nova_updater.bat";
 
-	string dl_cmd = "curl.exe -fL -o \"" + zip_file + "\" \"" + _download_url + "\"";
+	// Descargar con curl pasando User-Agent
+	string dl_cmd = "curl.exe -fL -A \"NOVA-STUDIO-Updater\" -o \"" + exe_file + "\" \"" + _download_url + "\"";
 	int dl_ret = system(dl_cmd.c_str());
 
 	if (dl_ret != 0) {
@@ -215,31 +217,26 @@ UpdateChecker::download_and_install ()
 		return;
 	}
 
-	_progress_bar.set_fraction (0.8);
-	_progress_bar.set_text (_("Generando script de reinicio..."));
+	_progress_bar.set_fraction (0.9);
+	_progress_bar.set_text (_("Iniciando instalador..."));
 	while (gtk_events_pending ()) gtk_main_iteration ();
 
+	// Script batch que espera a que NOVA-STUDIO se cierre e inicia el instalador NSIS
 	ofstream bat(bat_file.c_str());
 	if (bat) {
 		bat << "@echo off\n";
-		bat << "timeout /t 2 /nobreak > NUL\n";
-		bat << "tar.exe -xf \"" << zip_file << "\" -C \"%~dp0..\"\n";
-		bat << "del /f /q \"" << zip_file << "\"\n";
-		bat << "start \"\" \"%~dp0NOVA-STUDIO.exe\"\n";
+		bat << "timeout /t 1 /nobreak > NUL\n";
+		bat << "start \"\" \"" << exe_file << "\"\n";
 		bat << "del /f /q \"%~f0\"\n";
 		bat.close();
 	}
-
-	_progress_bar.set_fraction (1.0);
-	_progress_bar.set_text (_("¡Descargado! Reiniciando NOVA-STUDIO..."));
-	while (gtk_events_pending ()) gtk_main_iteration ();
 
 	WinExec(("cmd.exe /c start /b " + bat_file).c_str(), SW_HIDE);
 	exit(0);
 #else
 	string tmp_dir = "/tmp/nova_upgrade_" + to_string (getpid ());
 	string tarball = tmp_dir + "/update.tar.gz";
-	string dl_cmd  = "mkdir -p '" + tmp_dir + "' && curl -fL -o '" + tarball + "' '" + _download_url + "' 2>/dev/null";
+	string dl_cmd  = "mkdir -p '" + tmp_dir + "' && curl -fL -A 'NOVA-STUDIO-Updater' -o '" + tarball + "' '" + _download_url + "' 2>/dev/null";
 
 	int dl_ret = system (dl_cmd.c_str ());
 	if (dl_ret != 0) {
@@ -287,9 +284,13 @@ UpdateChecker::check_and_notify (const string& current_version, const string& gi
 	_already_checked = true;
 
 	std::thread ([current_version, github_repo]() {
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+		std::this_thread::sleep_for(std::chrono::seconds(2));
 
-		string cmd = "curl -s --max-time 4 \"https://api.github.com/repos/" + github_repo + "/releases/latest\" 2>/dev/null";
+#ifdef PLATFORM_WINDOWS
+		string cmd = "curl.exe -s -H \"User-Agent: NOVA-STUDIO-Updater\" --max-time 6 \"https://api.github.com/repos/" + github_repo + "/releases/latest\" 2>nul";
+#else
+		string cmd = "curl -s -H \"User-Agent: NOVA-STUDIO-Updater\" --max-time 6 \"https://api.github.com/repos/" + github_repo + "/releases/latest\" 2>/dev/null";
+#endif
 		FILE* pipe = popen (cmd.c_str (), "r");
 		string response_json = "";
 		if (pipe) {
@@ -310,13 +311,12 @@ UpdateChecker::check_and_notify (const string& current_version, const string& gi
 			}
 		}
 
-		// Comparación normalizada sin fallos por el cuarto dígito .0
-		if (normalize_ver(remote_ver) == normalize_ver(current_version) || remote_ver.empty()) {
-			return; // Ya está actualizado
+		if (remote_ver.empty() || normalize_ver(remote_ver) == normalize_ver(current_version)) {
+			return; // Ya está actualizado o no hubo respuesta
 		}
 
 #ifdef PLATFORM_WINDOWS
-		string ext = ".exe"; // En Windows busca el instalador .exe o .zip
+		string ext = ".exe";
 #else
 		string ext = ".tar.gz";
 #endif

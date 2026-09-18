@@ -41,6 +41,7 @@
 #include "ardour_window.h"
 #include "nova_script_editor.h"
 #include "nova_file_explorer.h"
+#include "nova_lua_console.h"
 
 class LuaWindow :
 	public ArdourWindow,
@@ -93,12 +94,12 @@ private:
 	sigc::connection _script_changed_connection;
 	sigc::connection _tab_switch_connection;
 
-	/* Tabs nativas con Gtk::Notebook (diseño clásico) */
 	Gtk::Notebook _script_notebook;
 	bool          _ignore_tab_switch;
 
 	NovaScriptEditor _editor;
 	NovaFileExplorer _explorer;
+	NovaLuaConsole   _console;
 
 	Gtk::TextView outtext;
 	Gtk::ScrolledWindow scrollout;
@@ -125,11 +126,9 @@ private:
 	bool _explorer_visible;
 
 	void toggle_explorer ();
-	/* Buffer-First: preset_content no vacío = usar RAM; vacío = leer disco */
 	void open_file_in_editor (const std::string& path, const std::string& preset_content = std::string());
 	void on_file_renamed (const std::string& old_path, const std::string& new_path);
 
-	/* Tabs API */
 	void rebuild_tab_strip ();
 	void close_tab (ScriptBufferPtr sb);
 	void on_script_tab_switched (GtkNotebookPage* page, guint page_num);

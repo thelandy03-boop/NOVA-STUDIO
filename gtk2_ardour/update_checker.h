@@ -27,7 +27,6 @@ private:
 
 	Gtk::Label       _title_label;
 	Gtk::Label       _subtitle_label;
-	Gtk::Label       _version_box_label;
 	Gtk::Label       _info_label;
 	Gtk::ProgressBar _progress_bar;
 	Gtk::Button      _update_button;
@@ -38,7 +37,6 @@ private:
 	void download_and_install ();
 	void set_busy (bool busy);
 
-	static void thread_worker (std::string current_version, std::string github_repo);
 	static bool idle_show_dialog (std::string current, std::string remote, std::string url);
 	static bool _already_checked;
 };

@@ -43,6 +43,7 @@
 #include "ui_config.h"
 #include "ardour_ui.h"
 
+#include "nova_reaper_compat.h"
 #include "pbd/i18n.h"
 
 LuaWindow* LuaWindow::_instance = nullptr;
@@ -230,7 +231,6 @@ void LuaWindow::open_file_in_editor (const std::string& path, const std::string&
 
 	const std::string key = normalize_path_key (path);
 
-	/* 1. Ya abierto en un buffer → activar pestaña */
 	for (auto& buf : script_buffers) {
 		if (buf && normalize_path_key (buf->path) == key) {
 			if (!preset_content.empty ()) {
@@ -244,7 +244,6 @@ void LuaWindow::open_file_in_editor (const std::string& path, const std::string&
 		}
 	}
 
-	/* 2. Contenido: RAM primero (Buffer-First), disco solo si preset está vacío */
 	std::string content = preset_content;
 
 	if (content.empty ()) {
@@ -297,10 +296,6 @@ void LuaWindow::on_file_renamed (const std::string& old_path, const std::string&
 	}
 	rebuild_tab_strip ();
 }
-
-/* =========================================================================
-   TABS (Gtk::Notebook nativo — Protegido contra eventos diferidos de GTK)
-   ========================================================================= */
 
 std::string
 LuaWindow::tab_title_for (ScriptBufferPtr sb) const
@@ -391,7 +386,6 @@ LuaWindow::rebuild_tab_strip ()
 
 	_script_notebook.show_all ();
 
-	/* Drenar todos los eventos de GTK pendientes MIENTRAS _ignore_tab_switch sigue en TRUE */
 	while (Gtk::Main::events_pending()) {
 		Gtk::Main::iteration();
 	}
@@ -483,10 +477,6 @@ LuaWindow::close_tab (ScriptBufferPtr sb)
 	}
 }
 
-/* =========================================================================
-   UI SETUP
-   ========================================================================= */
-
 void LuaWindow::setup_ui ()
 {
 	Gtk::VBox* main_vbox = Gtk::manage (new Gtk::VBox (false, 0));
@@ -533,7 +523,7 @@ void LuaWindow::setup_ui ()
 
 	main_vbox->pack_start (*toolbar, Gtk::PACK_SHRINK);
 
-	// 3. Tabs nativas (Notebook) + Editor — SIN botón +
+	// 3. Tabs nativas (Notebook) + Editor
 	_script_notebook.set_scrollable (true);
 	_script_notebook.set_show_border (false);
 	_script_notebook.set_tab_pos (Gtk::POS_TOP);
@@ -613,8 +603,8 @@ void LuaWindow::setup_ui ()
 	console_btns->pack_start (_btn_revert, Gtk::PACK_SHRINK);
 	console_vbox->pack_start (*console_btns, Gtk::PACK_SHRINK);
 
-	_notebook_bottom.append_page (*console_vbox, _("Script Editor"));
-	_notebook_bottom.append_page (*Gtk::manage (new Gtk::Label (_("Interactive Lua Console ready..."))), _("Interactive Console"));
+	_notebook_bottom.append_page (*console_vbox, _("Script Editor Output"));
+	_notebook_bottom.append_page (_console, _("Interactive Console"));
 	_notebook_bottom.append_page (*Gtk::manage (new Gtk::Label (_("API Documentation Explorer"))), _("API Docs Explorer"));
 
 	_main_vpaned.pack1 (_editor_hpaned, true, true);
@@ -758,7 +748,22 @@ void LuaWindow::reinit_lua ()
 	luabridge::push <PublicEditor *> (L, &PublicEditor::instance());
 	lua_setglobal (L, "Editor");
 
+	if (_session) {
+		luabridge::push <ARDOUR::Session *> (L, _session);
+		lua_setglobal (L, "Session");
+
+		luaL_dostring(L, "if Session then "
+		                 "  local s = Session; "
+		                 "  Session = { instance = function() return s end }; "
+		                 "  setmetatable(Session, { __index = s }); "
+		                 "end");
+	}
+
+	// Inyección limpia del módulo ReaScript independiente
+	NovaReaperCompat::inject(L);
+
 	_editor.set_lua_state(L);
+	_console.set_lua_state(L);
 }
 
 void LuaWindow::run_script ()
@@ -907,6 +912,7 @@ void LuaWindow::set_session (ARDOUR::Session* s)
 {
 	SessionHandlePtr::set_session(s);
 	update_inspector_values();
+	reinit_lua(); // Actualizar el puntero Session en el motor Lua
 	if (_explorer_visible) {
 		_explorer.refresh ();
 	}
