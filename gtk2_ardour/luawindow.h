@@ -19,7 +19,11 @@
 #include <ytkmm/menu.h>
 #include <ytkmm/menuitem.h>
 #include <ytkmm/button.h>
-#include <ytkmm/image.h>
+#include <ytkmm/eventbox.h>
+
+#include <vector>
+#include <string>
+#include <memory>
 
 #include "pbd/signals.h"
 #include "pbd/stateful.h"
@@ -36,6 +40,7 @@
 #include "widgets/ardour_dropdown.h"
 #include "ardour_window.h"
 #include "nova_script_editor.h"
+#include "nova_file_explorer.h"
 
 class LuaWindow :
 	public ArdourWindow,
@@ -71,6 +76,9 @@ public:
 		ARDOUR::LuaScriptInfo::ScriptType type;
 	};
 
+	typedef std::shared_ptr<ScriptBuffer> ScriptBufferPtr;
+	typedef std::vector<ScriptBufferPtr> ScriptBufferList;
+
 private:
 	LuaWindow ();
 	static LuaWindow* _instance;
@@ -80,17 +88,19 @@ private:
 	Gtk::MenuBar _main_menubar;
 	Gtk::VPaned _main_vpaned;
 	Gtk::HPaned _top_hpaned;
-
-	Gtk::Menu* _menu_scratch;
-	Gtk::Menu* _menu_snippet;
-	Gtk::Menu* _menu_actions;
+	Gtk::HPaned _editor_hpaned;
 
 	sigc::connection _script_changed_connection;
+	sigc::connection _tab_switch_connection;
 
-	NovaScriptEditor editor;
+	/* Tabs nativas con Gtk::Notebook (diseño clásico) */
+	Gtk::Notebook _script_notebook;
+	bool          _ignore_tab_switch;
+
+	NovaScriptEditor _editor;
+	NovaFileExplorer _explorer;
 
 	Gtk::TextView outtext;
-	Gtk::ScrolledWindow scrollin;
 	Gtk::ScrolledWindow scrollout;
 
 	Gtk::Button _btn_run;
@@ -104,12 +114,28 @@ private:
 	Gtk::Button _btn_save;
 	Gtk::Button _btn_delete;
 	Gtk::Button _btn_options;
+	Gtk::Button _btn_explorer;
 
 	Gtk::Button _btn_clear;
 	Gtk::Button _btn_revert;
 	Gtk::Button _btn_add_watch;
 
 	ArdourWidgets::ArdourDropdown script_select;
+
+	bool _explorer_visible;
+
+	void toggle_explorer ();
+	/* Buffer-First: preset_content no vacío = usar RAM; vacío = leer disco */
+	void open_file_in_editor (const std::string& path, const std::string& preset_content = std::string());
+	void on_file_renamed (const std::string& old_path, const std::string& new_path);
+
+	/* Tabs API */
+	void rebuild_tab_strip ();
+	void close_tab (ScriptBufferPtr sb);
+	void on_script_tab_switched (GtkNotebookPage* page, guint page_num);
+	std::string tab_title_for (ScriptBufferPtr sb) const;
+	int  page_index_for_buffer (ScriptBufferPtr sb) const;
+	Gtk::Widget* make_tab_label (ScriptBufferPtr sb);
 
 	struct InspectorColumns : public Gtk::TreeModel::ColumnRecord {
 		InspectorColumns() { add(col_name); add(col_value); }
@@ -120,13 +146,9 @@ private:
 	Gtk::TreeView _tree_inspector;
 	Glib::RefPtr<Gtk::ListStore> _model_inspector;
 
-	Gtk::Notebook _editor_notebook;
 	Gtk::Notebook _notebook_bottom;
 	Gtk::Label _lbl_status_pos;
 	Gtk::Label _lbl_lua_ver;
-
-	typedef std::shared_ptr<ScriptBuffer> ScriptBufferPtr;
-	typedef std::vector<ScriptBufferPtr> ScriptBufferList;
 
 	ScriptBufferList script_buffers;
 	ScriptBufferPtr _current_buffer;
@@ -134,7 +156,7 @@ private:
 	void setup_ui ();
 	void build_menubar ();
 	void set_btn_icon_and_text (Gtk::Button& btn, const std::string& icon_filename, const std::string& text);
-	
+
 	void session_going_away ();
 	void update_title ();
 	void reinit_lua ();
@@ -149,6 +171,7 @@ private:
 	void update_gui_state ();
 	void update_inspector_values ();
 	void on_cursor_position_changed ();
+	void on_lint_status_changed (bool ok, std::string msg, int line);
 
 	void append_text (std::string s);
 	void scroll_to_bottom ();

@@ -162,7 +162,7 @@ gtk2_ardour_sources = [
         'luadialog.cc',
         'luainstance.cc',
         'luawindow.cc',
-    'nova_script_editor.cc',
+    'nova_script_editor.cc', 'nova_file_explorer.cc',
         'main.cc',
         'main_clock.cc',
         'marker.cc',

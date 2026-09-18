@@ -9,6 +9,11 @@
 #include <ctime>
 #include <chrono>
 #include <algorithm>
+#include <vector>
+#include <cctype>
+
+#include <glibmm/fileutils.h>
+#include <glibmm/markup.h>
 
 #include <ydkmm/pixbuf.h>
 #include <ytkmm/stock.h>
@@ -16,12 +21,17 @@
 #include <ytkmm/scrollbar.h>
 #include <ytkmm/messagedialog.h>
 #include <ytkmm/filechooserdialog.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/alignment.h>
+#include <ytkmm/main.h>
 
+#include "pbd/compose.h"
 #include "pbd/file_utils.h"
 #include "pbd/gstdio_compat.h"
 
 #include "ardour/filesystem_paths.h"
 #include "ardour/luascripting.h"
+#include "ardour/filename_extensions.h"
 
 #include "gtkmm2ext/gui_thread.h"
 #include "gtkmm2ext/utils.h"
@@ -69,6 +79,17 @@ static Gtk::Image* load_scaled_icon (const std::string& filename, int size = 18)
 	return Gtk::manage (new Gtk::Image ());
 }
 
+static std::string normalize_path_key (std::string p)
+{
+	for (char& c : p) {
+		if (c == '/') c = '\\';
+	}
+	if (p.size () >= 2 && p[1] == ':') {
+		p[0] = (char) std::toupper ((unsigned char) p[0]);
+	}
+	return p;
+}
+
 LuaWindow::ScriptBuffer::ScriptBuffer (const std::string& name_)
 	: name (name_)
 	, flags (Buffer_NOFLAG)
@@ -89,12 +110,12 @@ LuaWindow::ScriptBuffer::~ScriptBuffer () {}
 bool LuaWindow::ScriptBuffer::load ()
 {
 	if (path.empty ()) return false;
-	std::ifstream file (path.c_str ());
-	if (!file.is_open ()) return false;
-	std::stringstream strStream;
-	strStream << file.rdbuf ();
-	script = strStream.str ();
-	return true;
+	try {
+		script = Glib::file_get_contents(path);
+		return true;
+	} catch (...) {
+		return false;
+	}
 }
 
 LuaWindow* LuaWindow::instance ()
@@ -108,8 +129,11 @@ LuaWindow* LuaWindow::instance ()
 LuaWindow::LuaWindow ()
 	: ArdourWindow (_("NOVA-STUDIO - Lua Scripting Environment"))
 	, lua (nullptr)
+	, _ignore_tab_switch (false)
+	, _explorer_visible (false)
 {
 	setup_ui ();
+	reinit_lua ();
 	setup_buffers ();
 
 	_btn_run.signal_clicked().connect (sigc::mem_fun (*this, &LuaWindow::run_script));
@@ -118,13 +142,26 @@ LuaWindow::LuaWindow ()
 	_btn_save.signal_clicked().connect (sigc::mem_fun (*this, &LuaWindow::save_script));
 	_btn_delete.signal_clicked().connect (sigc::mem_fun (*this, &LuaWindow::delete_script));
 	_btn_revert.signal_clicked().connect (sigc::mem_fun (*this, &LuaWindow::revert_script));
+	_btn_explorer.signal_clicked().connect (sigc::mem_fun (*this, &LuaWindow::toggle_explorer));
 
-	editor.signal_text_changed().connect(sigc::mem_fun(*this, &LuaWindow::script_changed));
-	editor.signal_cursor_changed().connect(sigc::mem_fun(*this, &LuaWindow::on_cursor_position_changed));
+	/* Explorer */
+	_explorer.signal_file_selected().connect (sigc::mem_fun (*this, &LuaWindow::open_file_in_editor));
+	_explorer.signal_close_requested().connect (sigc::mem_fun (*this, &LuaWindow::toggle_explorer));
+	_explorer.signal_log_message().connect (sigc::mem_fun (*this, &LuaWindow::append_text));
+	_explorer.signal_file_renamed().connect (sigc::mem_fun (*this, &LuaWindow::on_file_renamed));
+
+	/* Editor */
+	_editor.signal_text_changed().connect(sigc::mem_fun(*this, &LuaWindow::script_changed));
+	_editor.signal_cursor_changed().connect(sigc::mem_fun(*this, &LuaWindow::on_cursor_position_changed));
+	_editor.signal_lint_status().connect(sigc::mem_fun(*this, &LuaWindow::on_lint_status_changed));
 
 	_tree_inspector.signal_cursor_changed().connect(sigc::mem_fun(*this, &LuaWindow::update_inspector_values));
 
-	set_default_size (1080, 720);
+	/* Tabs nativas */
+	_tab_switch_connection = _script_notebook.signal_switch_page().connect (
+		sigc::mem_fun (*this, &LuaWindow::on_script_tab_switched));
+
+	set_default_size (1200, 750);
 	set_border_width (0);
 }
 
@@ -174,6 +211,282 @@ void LuaWindow::build_menubar ()
 	_main_menubar.append (*item_help);
 }
 
+void LuaWindow::toggle_explorer ()
+{
+	_explorer_visible = !_explorer_visible;
+	if (_explorer_visible) {
+		_explorer.show ();
+		_explorer.show_all_children ();
+		_explorer.refresh ();
+		_editor_hpaned.set_position (260);
+	} else {
+		_explorer.hide ();
+	}
+}
+
+void LuaWindow::open_file_in_editor (const std::string& path, const std::string& preset_content)
+{
+	if (path.empty ()) return;
+
+	const std::string key = normalize_path_key (path);
+
+	/* 1. Ya abierto en un buffer → activar pestaña */
+	for (auto& buf : script_buffers) {
+		if (buf && normalize_path_key (buf->path) == key) {
+			if (!preset_content.empty ()) {
+				buf->script = preset_content;
+			} else if (buf->script.empty ()) {
+				buf->load ();
+			}
+			script_selection_changed (buf, true);
+			append_text ("> Switched to script: " + path + "\n");
+			return;
+		}
+	}
+
+	/* 2. Contenido: RAM primero (Buffer-First), disco solo si preset está vacío */
+	std::string content = preset_content;
+
+	if (content.empty ()) {
+		if (!Glib::file_test (path, Glib::FILE_TEST_IS_REGULAR)) {
+			append_text ("> [Error] File not found: " + path + "\n");
+			return;
+		}
+		for (int attempt = 0; attempt < 8; ++attempt) {
+			try {
+				content = Glib::file_get_contents (path);
+			} catch (...) {}
+
+			if (content.empty ()) {
+				std::ifstream file (path.c_str (), std::ios::in | std::ios::binary);
+				if (file.is_open ()) {
+					std::stringstream ss;
+					ss << file.rdbuf ();
+					content = ss.str ();
+				}
+			}
+
+			if (!content.empty ()) break;
+			g_usleep (30000);
+		}
+	}
+
+	ScriptBufferPtr sb (new ScriptBuffer (Glib::path_get_basename (path)));
+	sb->path   = path;
+	sb->script = content;
+	sb->flags  = Buffer_HasFile;
+
+	script_buffers.push_back (sb);
+	script_selection_changed (sb, true);
+
+	append_text ("> Switched to script: " + path + "\n");
+}
+
+void LuaWindow::on_file_renamed (const std::string& old_path, const std::string& new_path)
+{
+	const std::string old_key = normalize_path_key (old_path);
+	for (ScriptBufferPtr sb : script_buffers) {
+		if (!sb) continue;
+		if (normalize_path_key (sb->path) == old_key) {
+			sb->path = new_path;
+			sb->name = Glib::path_get_basename (new_path);
+			if (sb == _current_buffer) {
+				append_text ("> Buffer path updated: " + new_path + "\n");
+			}
+		}
+	}
+	rebuild_tab_strip ();
+}
+
+/* =========================================================================
+   TABS (Gtk::Notebook nativo — Protegido contra eventos diferidos de GTK)
+   ========================================================================= */
+
+std::string
+LuaWindow::tab_title_for (ScriptBufferPtr sb) const
+{
+	if (!sb) return "?";
+
+	std::string title = sb->name;
+	if (title.empty () && !sb->path.empty ()) {
+		title = Glib::path_get_basename (sb->path);
+	}
+	if (title.empty ()) {
+		title = _("Untitled");
+	}
+
+	if (title.size () > 4) {
+		std::string lower = title;
+		std::transform (lower.begin (), lower.end (), lower.begin (), ::tolower);
+		if (lower.substr (lower.size () - 4) == ".lua") {
+			title = title.substr (0, title.size () - 4);
+		}
+	}
+
+	if (sb->flags & Buffer_Dirty) {
+		return std::string ("• ") + title;
+	}
+	return title;
+}
+
+int
+LuaWindow::page_index_for_buffer (ScriptBufferPtr sb) const
+{
+	if (!sb) return -1;
+	for (int i = 0; i < (int) script_buffers.size (); ++i) {
+		if (script_buffers[i] == sb) return i;
+	}
+	return -1;
+}
+
+Gtk::Widget*
+LuaWindow::make_tab_label (ScriptBufferPtr sb)
+{
+	Gtk::HBox* box = Gtk::manage (new Gtk::HBox (false, 4));
+	Gtk::Label* lbl = Gtk::manage (new Gtk::Label (tab_title_for (sb)));
+	Gtk::Button* close_btn = Gtk::manage (new Gtk::Button ("×"));
+
+	close_btn->set_relief (Gtk::RELIEF_NONE);
+	close_btn->set_focus_on_click (false);
+	close_btn->set_size_request (16, 16);
+	close_btn->set_tooltip_text (_("Close"));
+
+	close_btn->signal_clicked().connect (
+		sigc::bind (sigc::mem_fun (*this, &LuaWindow::close_tab), sb));
+
+	box->pack_start (*lbl, true, true, 0);
+	box->pack_start (*close_btn, false, false, 0);
+	box->show_all ();
+	return box;
+}
+
+void
+LuaWindow::rebuild_tab_strip ()
+{
+	_tab_switch_connection.block ();
+	_ignore_tab_switch = true;
+
+	while ((size_t)_script_notebook.get_n_pages() > script_buffers.size()) {
+		_script_notebook.remove_page(_script_notebook.get_n_pages() - 1);
+	}
+
+	while ((size_t)_script_notebook.get_n_pages() < script_buffers.size()) {
+		Gtk::Label* placeholder = Gtk::manage(new Gtk::Label());
+		placeholder->set_size_request(0, 0);
+		size_t idx = _script_notebook.get_n_pages();
+		_script_notebook.append_page(*placeholder, *make_tab_label(script_buffers[idx]));
+	}
+
+	for (size_t i = 0; i < script_buffers.size(); ++i) {
+		Gtk::Widget* page = _script_notebook.get_nth_page(i);
+		if (page) {
+			_script_notebook.set_tab_label(*page, *make_tab_label(script_buffers[i]));
+		}
+	}
+
+	int cur_idx = page_index_for_buffer(_current_buffer);
+	if (cur_idx >= 0) {
+		_script_notebook.set_current_page(cur_idx);
+	}
+
+	_script_notebook.show_all ();
+
+	/* Drenar todos los eventos de GTK pendientes MIENTRAS _ignore_tab_switch sigue en TRUE */
+	while (Gtk::Main::events_pending()) {
+		Gtk::Main::iteration();
+	}
+
+	_ignore_tab_switch = false;
+	_tab_switch_connection.unblock ();
+}
+
+void
+LuaWindow::on_script_tab_switched (GtkNotebookPage* /*page*/, guint page_num)
+{
+	if (_ignore_tab_switch) return;
+	if (page_num >= script_buffers.size ()) return;
+
+	ScriptBufferPtr sb = script_buffers[page_num];
+	if (!sb || sb == _current_buffer) return;
+
+	if (_current_buffer) {
+		_current_buffer->script = _editor.get_text ();
+	}
+
+	_current_buffer = sb;
+	_editor.set_text (sb->script);
+
+	append_text ("> Switched to script: " + (sb->path.empty () ? sb->name : sb->path) + "\n");
+}
+
+void
+LuaWindow::close_tab (ScriptBufferPtr sb)
+{
+	if (!sb) return;
+
+	if (sb->flags & Buffer_Dirty) {
+		Gtk::MessageDialog dialog (
+			*this,
+			string_compose (_("'%1' has unsaved changes. Close anyway?"), tab_title_for (sb)),
+			false,
+			Gtk::MESSAGE_WARNING,
+			Gtk::BUTTONS_NONE,
+			true);
+		dialog.add_button (Gtk::Stock::CANCEL, Gtk::RESPONSE_CANCEL);
+		dialog.add_button (_("Close without Saving"), Gtk::RESPONSE_ACCEPT);
+		dialog.add_button (Gtk::Stock::SAVE, Gtk::RESPONSE_YES);
+		dialog.set_default_response (Gtk::RESPONSE_YES);
+		dialog.set_position (Gtk::WIN_POS_CENTER);
+
+		int resp = dialog.run ();
+		dialog.hide ();
+
+		if (resp == Gtk::RESPONSE_CANCEL) {
+			return;
+		}
+		if (resp == Gtk::RESPONSE_YES) {
+			ScriptBufferPtr prev = _current_buffer;
+			script_selection_changed (sb, true);
+			save_script ();
+			if (prev && prev != sb) {
+				script_selection_changed (prev, true);
+			}
+			if (sb->flags & Buffer_Dirty) {
+				return;
+			}
+		}
+	}
+
+	ScriptBufferList::iterator it = std::find (script_buffers.begin (), script_buffers.end (), sb);
+	if (it == script_buffers.end ()) return;
+
+	bool was_current = (sb == _current_buffer);
+	script_buffers.erase (it);
+
+	if (script_buffers.empty ()) {
+		ScriptBufferPtr scratch (new ScriptBuffer (_("Scratch Buffer #1")));
+		scratch->script =
+			"---- this header is required to save the script\n"
+			"-- ardour { [\"type\"] = \"Snippet\", name = \"Scratch\", author = \"NOVA\" }\n\n"
+			"function factory ()\n"
+			"    return function ()\n"
+			"        local session = Session:instance()\n"
+			"    end\n"
+			"end\n";
+		scratch->flags = Buffer_Scratch;
+		script_buffers.push_back (scratch);
+		script_selection_changed (scratch, true);
+	} else if (was_current) {
+		script_selection_changed (script_buffers.back (), true);
+	} else {
+		rebuild_tab_strip ();
+	}
+}
+
+/* =========================================================================
+   UI SETUP
+   ========================================================================= */
+
 void LuaWindow::setup_ui ()
 {
 	Gtk::VBox* main_vbox = Gtk::manage (new Gtk::VBox (false, 0));
@@ -206,26 +519,30 @@ void LuaWindow::setup_ui ()
 
 	toolbar->pack_start (*Gtk::manage (new Gtk::VSeparator ()), Gtk::PACK_SHRINK);
 
-	set_btn_icon_and_text (_btn_open, "folder.png", _("Load"));
+	set_btn_icon_and_text (_btn_open, "folder32.png", _("Load"));
 	set_btn_icon_and_text (_btn_save, "Save.png", _("Save"));
 	set_btn_icon_and_text (_btn_delete, "delete32.png", _("Delete"));
 	set_btn_icon_and_text (_btn_options, "options.png", _("Options"));
+	set_btn_icon_and_text (_btn_explorer, "folder32.png", _("Explorer"));
 
 	toolbar->pack_start (_btn_open, Gtk::PACK_SHRINK);
 	toolbar->pack_start (_btn_save, Gtk::PACK_SHRINK);
 	toolbar->pack_start (_btn_delete, Gtk::PACK_SHRINK);
 	toolbar->pack_start (_btn_options, Gtk::PACK_SHRINK);
+	toolbar->pack_start (_btn_explorer, Gtk::PACK_SHRINK);
 
 	main_vbox->pack_start (*toolbar, Gtk::PACK_SHRINK);
 
-	// 3. Panel Editor (Scintilla C++ IDE Engine Empaquetado Directamente)
-	Gtk::HBox* editor_box = Gtk::manage (new Gtk::HBox (false, 0));
-	editor_box->pack_start (editor, Gtk::PACK_EXPAND_WIDGET);
+	// 3. Tabs nativas (Notebook) + Editor — SIN botón +
+	_script_notebook.set_scrollable (true);
+	_script_notebook.set_show_border (false);
+	_script_notebook.set_tab_pos (Gtk::POS_TOP);
 
-	Gtk::Notebook* editor_tabs = Gtk::manage (new Gtk::Notebook ());
-	editor_tabs->append_page (*editor_box, _("📄 Script Editor  ✕"));
+	Gtk::VBox* editor_container = Gtk::manage (new Gtk::VBox (false, 0));
+	editor_container->pack_start (_script_notebook, Gtk::PACK_SHRINK);
+	editor_container->pack_start (_editor, Gtk::PACK_EXPAND_WIDGET);
 
-	// Inspector Derecha
+	// 4. Inspector derecha
 	Gtk::VBox* inspector_vbox = Gtk::manage (new Gtk::VBox (false, 6));
 	inspector_vbox->set_border_width (8);
 	inspector_vbox->set_size_request (260, -1);
@@ -273,11 +590,15 @@ void LuaWindow::setup_ui ()
 	_btn_add_watch.set_label (_("+ Add Watch"));
 	inspector_vbox->pack_start (_btn_add_watch, Gtk::PACK_SHRINK);
 
-	_top_hpaned.pack1 (*editor_tabs, true, true);
+	_top_hpaned.pack1 (*editor_container, true, true);
 	_top_hpaned.pack2 (*inspector_vbox, false, false);
 	_top_hpaned.set_position (780);
 
-	// 4. Panel Consola
+	_editor_hpaned.pack1 (_explorer, false, false);
+	_editor_hpaned.pack2 (_top_hpaned, true, true);
+	_editor_hpaned.set_position (260);
+
+	// 5. Panel Consola
 	scrollout.add (outtext);
 	scrollout.set_policy (Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
 	outtext.set_editable (false);
@@ -296,12 +617,12 @@ void LuaWindow::setup_ui ()
 	_notebook_bottom.append_page (*Gtk::manage (new Gtk::Label (_("Interactive Lua Console ready..."))), _("Interactive Console"));
 	_notebook_bottom.append_page (*Gtk::manage (new Gtk::Label (_("API Documentation Explorer"))), _("API Docs Explorer"));
 
-	_main_vpaned.pack1 (_top_hpaned, true, true);
+	_main_vpaned.pack1 (_editor_hpaned, true, true);
 	_main_vpaned.pack2 (_notebook_bottom, false, true);
 
 	main_vbox->pack_start (_main_vpaned, Gtk::PACK_EXPAND_WIDGET);
 
-	// 5. Barra de Estado
+	// 6. Barra de Estado
 	Gtk::HBox* statusbar = Gtk::manage (new Gtk::HBox (false, 8));
 	statusbar->set_border_width (2);
 
@@ -315,6 +636,10 @@ void LuaWindow::setup_ui ()
 
 	update_inspector_values ();
 	main_vbox->show_all ();
+
+	_explorer.set_no_show_all(true);
+	_explorer.hide ();
+	_explorer_visible = false;
 }
 
 void LuaWindow::update_inspector_values ()
@@ -359,7 +684,7 @@ void LuaWindow::update_inspector_values ()
 void LuaWindow::on_cursor_position_changed ()
 {
 	int line = 1, col = 1;
-	editor.get_cursor_position (line, col);
+	_editor.get_cursor_position (line, col);
 
 	char tmp[64];
 	snprintf(tmp, sizeof(tmp), "Line %d, Col %d", line, col);
@@ -369,8 +694,15 @@ void LuaWindow::on_cursor_position_changed ()
 void LuaWindow::script_changed ()
 {
 	if (_current_buffer) {
-		_current_buffer->script = editor.get_text ();
+		_current_buffer->script = _editor.get_text ();
 		_current_buffer->flags = (BufferFlags)(_current_buffer->flags | Buffer_Dirty);
+		int idx = page_index_for_buffer (_current_buffer);
+		if (idx >= 0) {
+			Gtk::Widget* page = _script_notebook.get_nth_page (idx);
+			if (page) {
+				_script_notebook.set_tab_label (*page, *make_tab_label (_current_buffer));
+			}
+		}
 	}
 }
 
@@ -378,18 +710,40 @@ void LuaWindow::setup_buffers ()
 {
 	ScriptBufferPtr sb (new ScriptBuffer (_("Scratch Buffer #1")));
 
-	std::string raw_script = "---- this header is required to save the script\n-- ardour { [\"type\"] = \"Snippet\", name = \"Advanced Align & Split\", author = \"NOVA\" }\n\nfunction factory ()\n    return function ()\n        local session = Session:instance()\n        local sel_regions = Editor:get_selection().regions\n\n        for r in sel_regions:iter() do\n            local pos = r:position()\n            if pos > 0 then\n                r:set_position(pos + 1000)\n            end\n        end\n    end\nend\n";
+	std::string raw_script =
+		"---- this header is required to save the script\n"
+		"-- ardour { [\"type\"] = \"Snippet\", name = \"Advanced Align & Split\", author = \"NOVA\" }\n\n"
+		"function factory ()\n"
+		"    return function ()\n"
+		"        local session = Session:instance()\n"
+		"        local sel_regions = Editor:get_selection().regions\n\n"
+		"        for r in sel_regions:iter() do\n"
+		"            local pos = r:position()\n"
+		"            if pos > 0 then\n"
+		"                r:set_position(pos + 1000)\n"
+		"            end\n"
+		"        end\n"
+		"    end\n"
+		"end\n";
 
 	sb->script = raw_script;
+	sb->flags = Buffer_Scratch;
 	script_buffers.push_back (sb);
 	script_selection_changed (sb, true);
 }
 
-void LuaWindow::script_selection_changed (ScriptBufferPtr sb, bool force)
+void LuaWindow::script_selection_changed (ScriptBufferPtr sb, bool /*force*/)
 {
 	if (!sb) return;
+
+	if (_current_buffer && _current_buffer != sb) {
+		_current_buffer->script = _editor.get_text ();
+	}
+
 	_current_buffer = sb;
-	editor.set_text (sb->script);
+	_editor.set_text (sb->script);
+
+	rebuild_tab_strip ();
 }
 
 void LuaWindow::reinit_lua ()
@@ -403,6 +757,8 @@ void LuaWindow::reinit_lua ()
 	LuaInstance::register_classes (L, UIConfiguration::instance().get_sandbox_all_lua_scripts ());
 	luabridge::push <PublicEditor *> (L, &PublicEditor::instance());
 	lua_setglobal (L, "Editor");
+
+	_editor.set_lua_state(L);
 }
 
 void LuaWindow::run_script ()
@@ -413,8 +769,10 @@ void LuaWindow::run_script ()
 	reinit_lua ();
 	if (!lua) return;
 
+	_editor.invalidate_globals_cache();
+
 	lua_State* L = lua->getState();
-	std::string script_text = editor.get_text ();
+	std::string script_text = _editor.get_text ();
 
 	int err = luaL_dostring (L, script_text.c_str ());
 
@@ -441,7 +799,9 @@ void LuaWindow::append_text (std::string s)
 	Glib::RefPtr<Gtk::TextBuffer> tb (outtext.get_buffer());
 	tb->insert (tb->end(), s);
 	scroll_to_bottom ();
-	Gtkmm2ext::UI::instance()->flush_pending (0.05);
+	if (Gtkmm2ext::UI::instance()) {
+		Gtkmm2ext::UI::instance()->flush_pending (0.05);
+	}
 }
 
 void LuaWindow::scroll_to_bottom ()
@@ -457,16 +817,173 @@ void LuaWindow::clear_output ()
 	outtext.get_buffer ()->set_text ("");
 }
 
-void LuaWindow::import_script () {}
-void LuaWindow::save_script () {}
-void LuaWindow::delete_script () {}
-void LuaWindow::revert_script () {}
-void LuaWindow::set_session (ARDOUR::Session* s) { SessionHandlePtr::set_session(s); update_inspector_values(); }
-void LuaWindow::session_going_away () { SessionHandlePtr::session_going_away(); update_inspector_values(); }
+void LuaWindow::import_script ()
+{
+	Gtk::FileChooserDialog dialog(*this, _("Choose a Lua Script"), Gtk::FILE_CHOOSER_ACTION_OPEN);
+	dialog.add_button(Gtk::Stock::CANCEL, Gtk::RESPONSE_CANCEL);
+	dialog.add_button(Gtk::Stock::OPEN, Gtk::RESPONSE_ACCEPT);
+
+	Gtk::FileFilter filter_lua;
+	filter_lua.set_name(_("Lua Scripts (*.lua)"));
+	filter_lua.add_pattern("*.lua");
+	dialog.add_filter(filter_lua);
+
+	Gtk::FileFilter filter_any;
+	filter_any.set_name(_("All Files"));
+	filter_any.add_pattern("*");
+	dialog.add_filter(filter_any);
+
+	if (dialog.run() == Gtk::RESPONSE_ACCEPT) {
+		std::string path = dialog.get_filename();
+		open_file_in_editor (path);
+	}
+}
+
+void LuaWindow::save_script ()
+{
+	if (!_current_buffer) return;
+
+	if (_current_buffer->path.empty()) {
+		Gtk::FileChooserDialog dialog(*this, _("Save Script As"), Gtk::FILE_CHOOSER_ACTION_SAVE);
+		dialog.add_button(Gtk::Stock::CANCEL, Gtk::RESPONSE_CANCEL);
+		dialog.add_button(Gtk::Stock::SAVE, Gtk::RESPONSE_ACCEPT);
+		dialog.set_do_overwrite_confirmation(true);
+
+		Gtk::FileFilter filter_lua;
+		filter_lua.set_name(_("Lua Scripts (*.lua)"));
+		filter_lua.add_pattern("*.lua");
+		dialog.add_filter(filter_lua);
+
+		std::string suggest = _current_buffer->name;
+		if (suggest.size () < 4 || suggest.substr (suggest.size () - 4) != ".lua") {
+			suggest += ".lua";
+		}
+		dialog.set_current_name (suggest);
+
+		if (dialog.run() == Gtk::RESPONSE_ACCEPT) {
+			_current_buffer->path = dialog.get_filename();
+			_current_buffer->name = Glib::path_get_basename(_current_buffer->path);
+		} else {
+			return;
+		}
+	}
+
+	try {
+		Glib::file_set_contents(_current_buffer->path, _editor.get_text());
+		_current_buffer->script = _editor.get_text();
+		_current_buffer->flags = (BufferFlags)(_current_buffer->flags & ~Buffer_Dirty);
+		_current_buffer->flags = (BufferFlags)(_current_buffer->flags | Buffer_HasFile);
+		_current_buffer->flags = (BufferFlags)(_current_buffer->flags & ~Buffer_Scratch);
+		append_text("> Script saved successfully to: " + _current_buffer->path + "\n");
+		rebuild_tab_strip ();
+		if (_explorer_visible) {
+			_explorer.refresh ();
+		}
+	} catch (...) {
+		append_text("> [Error] Failed to write script: " + _current_buffer->path + "\n");
+	}
+}
+
+void LuaWindow::delete_script ()
+{
+	if (_current_buffer) {
+		close_tab (_current_buffer);
+	}
+}
+
+void LuaWindow::revert_script ()
+{
+	if (!_current_buffer || _current_buffer->path.empty()) return;
+
+	if (_current_buffer->load()) {
+		_editor.set_text(_current_buffer->script);
+		_current_buffer->flags = (BufferFlags)(_current_buffer->flags & ~Buffer_Dirty);
+		rebuild_tab_strip ();
+		append_text("> Reverted editor to last saved file state.\n");
+	}
+}
+
+void LuaWindow::set_session (ARDOUR::Session* s)
+{
+	SessionHandlePtr::set_session(s);
+	update_inspector_values();
+	if (_explorer_visible) {
+		_explorer.refresh ();
+	}
+}
+
+void LuaWindow::session_going_away ()
+{
+	SessionHandlePtr::session_going_away();
+	update_inspector_values();
+}
+
 void LuaWindow::edit_script (const std::string&, const std::string&) {}
 void LuaWindow::update_title () {}
 void LuaWindow::refresh_scriptlist () {}
 void LuaWindow::rebuild_menu () {}
-uint32_t LuaWindow::count_scratch_buffers () const { return 1; }
-void LuaWindow::new_script () {}
 void LuaWindow::update_gui_state () {}
+
+uint32_t LuaWindow::count_scratch_buffers () const
+{
+	uint32_t n = 0;
+	for (const auto& b : script_buffers) {
+		if (!b) continue;
+		if ((b->flags & Buffer_Scratch) || b->path.empty ()) {
+			++n;
+		}
+	}
+	return n;
+}
+
+void LuaWindow::new_script ()
+{
+	uint32_t n = count_scratch_buffers () + 1;
+	char buf[64];
+	snprintf (buf, sizeof (buf), "Scratch Buffer #%u", n);
+
+	ScriptBufferPtr sb (new ScriptBuffer (buf));
+	sb->script =
+		"---- this header is required to save the script\n"
+		"-- ardour { [\"type\"] = \"Snippet\", name = \"Scratch\", author = \"NOVA\" }\n\n"
+		"function factory ()\n"
+		"    return function ()\n"
+		"        local session = Session:instance()\n"
+		"        -- Your code here\n"
+		"    end\n"
+		"end\n";
+	sb->flags = Buffer_Scratch;
+
+	script_buffers.push_back (sb);
+	script_selection_changed (sb, true);
+	append_text (std::string ("> New scratch: ") + buf + "\n");
+}
+
+static std::string xml_escape_text (const std::string& text)
+{
+	std::string res;
+	res.reserve (text.size ());
+	for (char c : text) {
+		switch (c) {
+			case '<':  res += "&lt;"; break;
+			case '>':  res += "&gt;"; break;
+			case '&':  res += "&amp;"; break;
+			case '"':  res += "&quot;"; break;
+			case '\'': res += "&apos;"; break;
+			default:   res += c; break;
+		}
+	}
+	return res;
+}
+
+void LuaWindow::on_lint_status_changed (bool ok, std::string msg, int line)
+{
+	if (ok) {
+		_lbl_lua_ver.set_markup ("<span foreground='#00F0FF'>✔ Syntax OK</span>  |  Engine: Lua 5.3 (Scintilla C++ Engine)");
+	} else {
+		std::string clean_msg = xml_escape_text (msg);
+		char buf[512];
+		snprintf (buf, sizeof(buf), "<span foreground='#FF3366'>✖ Line %d: %s</span>  |  Engine: Lua 5.3", line, clean_msg.c_str());
+		_lbl_lua_ver.set_markup (buf);
+	}
+}

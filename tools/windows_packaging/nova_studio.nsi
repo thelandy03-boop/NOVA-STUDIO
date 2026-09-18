@@ -1,14 +1,17 @@
 !include "MUI2.nsh"
 
 !define PRODUCT_NAME "NOVA-STUDIO"
+!define PRODUCT_VERSION "9.8.34"
 !define PRODUCT_PUBLISHER "NOVA-STUDIO Team"
 !define PRODUCT_WEB_SITE "https://github.com/thelandy03-boop/NOVA-STUDIO"
 
-SetCompressor lzma
+; Compresor solido rapido
+SetCompressor /SOLID zlib
 
-Name "${PRODUCT_NAME}"
-OutFile "NOVA-STUDIO-Setup.exe"
+Name "${PRODUCT_NAME} v${PRODUCT_VERSION}"
+OutFile "NOVA-STUDIO-Setup-v${PRODUCT_VERSION}.exe"
 InstallDir "$PROGRAMFILES64\NOVA-STUDIO"
+RequestExecutionLevel admin
 ShowInstDetails show
 
 !define MUI_ABORTWARNING
@@ -20,16 +23,19 @@ ShowInstDetails show
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
 !insertmacro MUI_LANGUAGE "Spanish"
 
 Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
-  SetOverwrite ifnewer
+  SetOverwrite on
 
-  ; Copiar carpeta stage completa
+  ; Copiar carpeta stage completa optimizada
   File /r "C:\msys64\tmp\nova_stage\*.*"
 
-  ; Crear accesos directos apuntando a $INSTDIR
+  ; Crear accesos directos
   SetOutPath "$INSTDIR"
   CreateDirectory "$SMPROGRAMS\NOVA-STUDIO"
   CreateShortCut "$SMPROGRAMS\NOVA-STUDIO\NOVA-STUDIO.lnk" "$INSTDIR\NOVA-STUDIO.exe" "" "$INSTDIR\NOVA-STUDIO.exe" 0
@@ -38,7 +44,9 @@ SectionEnd
 
 Section -Post
   WriteUninstaller "$INSTDIR\uninst.exe"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME} v${PRODUCT_VERSION}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion" "${PRODUCT_VERSION}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "Publisher" "${PRODUCT_PUBLISHER}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "UninstallString" "$INSTDIR\uninst.exe"
 SectionEnd
 
