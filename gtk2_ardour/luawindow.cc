@@ -44,6 +44,7 @@
 #include "ardour_ui.h"
 
 #include "nova_reaper_compat.h"
+#include "nova_jsfx_parser.h"
 #include "pbd/i18n.h"
 
 LuaWindow* LuaWindow::_instance = nullptr;
@@ -588,7 +589,7 @@ void LuaWindow::setup_ui ()
 	_editor_hpaned.pack2 (_top_hpaned, true, true);
 	_editor_hpaned.set_position (260);
 
-	// 5. Panel Consola
+	// 5. Panel Consola (Bottom Notebook)
 	scrollout.add (outtext);
 	scrollout.set_policy (Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
 	outtext.set_editable (false);
@@ -768,6 +769,22 @@ void LuaWindow::reinit_lua ()
 
 void LuaWindow::run_script ()
 {
+	std::string script_text = _editor.get_text ();
+
+	if (script_text.empty()) return;
+
+	// Pre-Crash Guard: Detectar si el usuario pegó un plugin DSP de Audio (JSFX)
+	if (NovaJSFXParser::is_jsfx_code (script_text)) {
+		append_text ("> [JSFX Engine] CÓDIGO JSFX / EEL2 DETECTADO.\n");
+		append_text ("> Nota: Los efectos DSP de audio deben insertarse en las Pistas del Mezclador.\n");
+		append_text ("> Generando plantilla Lua DSP en el log...\n\n");
+		
+		std::string lua_dsp = NovaJSFXParser::jsfx_to_lua_dsp (script_text);
+		append_text (lua_dsp);
+		append_text ("\n> [OK] Guarda este código como .lua para cargarlo como plugin en cualquier pista.\n");
+		return;
+	}
+
 	append_text (_("> Executing Lua script...\n"));
 	auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -777,7 +794,6 @@ void LuaWindow::run_script ()
 	_editor.invalidate_globals_cache();
 
 	lua_State* L = lua->getState();
-	std::string script_text = _editor.get_text ();
 
 	int err = luaL_dostring (L, script_text.c_str ());
 

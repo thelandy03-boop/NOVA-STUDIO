@@ -170,6 +170,7 @@ gtk2_ardour_sources = [
     'nova_file_explorer.cc',
     'nova_lua_console.cc',
     'nova_reaper_compat.cc',
+    'nova_jsfx_parser.cc',
         'main.cc',
         'main_clock.cc',
         'marker.cc',
