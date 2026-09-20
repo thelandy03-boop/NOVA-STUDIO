@@ -19,54 +19,53 @@ static std::string trim(const std::string& str) {
 	return str.substr(first, (last - first + 1));
 }
 
-// Reemplazo seguro que avanza el puntero y evita bucles infinitos
 static void replace_all_safe(std::string& str, const std::string& from, const std::string& to) {
 	if (from.empty()) return;
 	size_t start_pos = 0;
 	while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
 		str.replace(start_pos, from.length(), to);
-		start_pos += to.length(); // Avanzar más allá del reemplazo
+		start_pos += to.length();
 	}
 }
 
 std::string
-NovaJSFXParser::jsfx_to_lua_dsp(const std::string& jsfx_code)
+NovaJSFXParser::extract_title(const std::string& jsfx_code)
 {
-	std::string name = "JSFX Plugin [NOVA Engine]";
-	std::string author = "JSFX Port";
-	
-	struct SliderParam {
-		int index;
-		std::string label;
-		double def_val;
-		double min_val;
-		double max_val;
-	};
-	std::vector<SliderParam> sliders;
-
-	std::string init_code = "";
-	std::string slider_code = "";
-	std::string sample_code = "";
-
 	std::istringstream stream(jsfx_code);
 	std::string line;
-	std::string current_section = "header";
+	while (std::getline(stream, line)) {
+		std::string clean = trim(line);
+		if (clean.rfind("desc:", 0) == 0) {
+			return trim(clean.substr(5));
+		}
+	}
+	return "JSFX Live Plugin";
+}
+
+std::string
+NovaJSFXParser::extract_author(const std::string& jsfx_code)
+{
+	std::istringstream stream(jsfx_code);
+	std::string line;
+	while (std::getline(stream, line)) {
+		std::string clean = trim(line);
+		if (clean.rfind("//author:", 0) == 0) {
+			return trim(clean.substr(9));
+		}
+	}
+	return "JSFX Port";
+}
+
+std::vector<JSFXParam>
+NovaJSFXParser::extract_params(const std::string& jsfx_code)
+{
+	std::vector<JSFXParam> sliders;
+	std::istringstream stream(jsfx_code);
+	std::string line;
 
 	while (std::getline(stream, line)) {
 		std::string clean = trim(line);
-		if (clean.empty() || clean.rfind("//", 0) == 0) continue;
-
-		if (clean.rfind("desc:", 0) == 0) {
-			name = trim(clean.substr(5));
-			continue;
-		}
-		if (clean.rfind("//author:", 0) == 0) {
-			author = trim(clean.substr(9));
-			continue;
-		}
-
-		// Parse Sliders: slider1:0<-20,20>Width Boost (dB)
-		if (clean.rfind("slider", 0) == 0 && current_section == "header") {
+		if (clean.rfind("slider", 0) == 0) {
 			size_t colon = clean.find(':');
 			size_t lt = clean.find('<');
 			size_t gt = clean.find('>');
@@ -82,21 +81,40 @@ NovaJSFXParser::jsfx_to_lua_dsp(const std::string& jsfx_code)
 					sliders.push_back({s_num, lbl, def_v, min_v, max_v});
 				} catch (...) {}
 			}
-			continue;
 		}
+	}
+	return sliders;
+}
+
+std::string
+NovaJSFXParser::jsfx_to_lua_dsp(const std::string& jsfx_code)
+{
+	std::string name = extract_title(jsfx_code);
+	std::string author = extract_author(jsfx_code);
+	std::vector<JSFXParam> sliders = extract_params(jsfx_code);
+
+	std::string init_code = "";
+	std::string slider_code = "";
+	std::string sample_code = "";
+
+	std::istringstream stream(jsfx_code);
+	std::string line;
+	std::string current_section = "header";
+
+	while (std::getline(stream, line)) {
+		std::string clean = trim(line);
+		if (clean.empty() || clean.rfind("//", 0) == 0) continue;
 
 		if (clean == "@init") { current_section = "init"; continue; }
 		if (clean == "@slider") { current_section = "slider"; continue; }
 		if (clean == "@block") { current_section = "block"; continue; }
 		if (clean == "@sample") { current_section = "sample"; continue; }
 
-		// Apilar código de las secciones EEL2
 		if (current_section == "init") init_code += "    " + clean + "\n";
 		if (current_section == "slider") slider_code += "    " + clean + "\n";
 		if (current_section == "sample") sample_code += "        " + clean + "\n";
 	}
 
-	// Traductor EEL2 -> Lua (Sin bucles infinitos)
 	auto convert_eel2_to_lua = [](std::string code) {
 		replace_all_safe(code, "sqr(", "math.sqr(");
 		replace_all_safe(code, "sqrt(", "math.sqrt(");
@@ -107,10 +125,7 @@ NovaJSFXParser::jsfx_to_lua_dsp(const std::string& jsfx_code)
 		replace_all_safe(code, "sign(", "math.sign(");
 		replace_all_safe(code, "abs(", "math.abs(");
 
-		// Reemplazar comentarios de C++ // por los de Lua --
 		replace_all_safe(code, "//", "--");
-
-		// Eliminar punto y coma final de sentencias
 		std::replace(code.begin(), code.end(), ';', ' ');
 		return code;
 	};
@@ -119,7 +134,6 @@ NovaJSFXParser::jsfx_to_lua_dsp(const std::string& jsfx_code)
 	slider_code = convert_eel2_to_lua(slider_code);
 	sample_code = convert_eel2_to_lua(sample_code);
 
-	// Generar Código Lua DSP Oficial de Ardour / NOVA
 	std::ostringstream out;
 	out << "ardour {\n";
 	out << "    [\"type\"] = \"dsp\",\n";

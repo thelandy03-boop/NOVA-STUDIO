@@ -44,6 +44,7 @@
 #include "ardour_ui.h"
 
 #include "nova_reaper_compat.h"
+#include "nova_jsfx_window.h"
 #include "nova_jsfx_parser.h"
 #include "pbd/i18n.h"
 
@@ -773,15 +774,14 @@ void LuaWindow::run_script ()
 
 	if (script_text.empty()) return;
 
-	// Pre-Crash Guard: Detectar si el usuario pegó un plugin DSP de Audio (JSFX)
+	// Flujo Mágico JSFX: Desplegar Ventana Flotante GUI Instantáneamente
 	if (NovaJSFXParser::is_jsfx_code (script_text)) {
-		append_text ("> [JSFX Engine] CÓDIGO JSFX / EEL2 DETECTADO.\n");
-		append_text ("> Nota: Los efectos DSP de audio deben insertarse en las Pistas del Mezclador.\n");
-		append_text ("> Generando plantilla Lua DSP en el log...\n\n");
+		append_text ("> [JSFX Engine] Lanzando Ventana Flotante de Interfaz Gráfica...\n");
 		
-		std::string lua_dsp = NovaJSFXParser::jsfx_to_lua_dsp (script_text);
-		append_text (lua_dsp);
-		append_text ("\n> [OK] Guarda este código como .lua para cargarlo como plugin en cualquier pista.\n");
+		// Desplegar la GUI Emergente con los Sliders
+		NovaJSFXWindow::launch_for_jsfx(script_text);
+
+		append_text ("> [OK] ¡Interfaz Emergente desplegada en pantalla con controles en tiempo real!\n");
 		return;
 	}
 
@@ -814,7 +814,6 @@ void LuaWindow::run_script ()
 	}
 	update_inspector_values();
 }
-
 void LuaWindow::append_text (std::string s)
 {
 	Glib::RefPtr<Gtk::TextBuffer> tb (outtext.get_buffer());

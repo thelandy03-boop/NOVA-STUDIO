@@ -91,6 +91,7 @@
 #include "transport_masters_dialog.h"
 #include "trigger_page.h"
 #include "virtual_keyboard_window.h"
+#include "nova_colab_dialog.h"
 
 #include "pbd/i18n.h"
 
@@ -1092,6 +1093,12 @@ ARDOUR_UI::show_lua_window ()
 {
 	Glib::RefPtr<ToggleAction> tact = ActionManager::get_toggle_action ("Window", "toggle-luawindow");
 	tact->set_active();
+}
+
+void
+ARDOUR_UI::show_colab_dialog ()
+{
+	NovaColabDialog::toggle_dialog ();
 }
 
 void

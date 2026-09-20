@@ -80,6 +80,7 @@
 #include "editing.h"
 #include "enums.h"
 #include "region_ui_settings.h"
+#include "nova_colab_dialog.h"
 #include "shuttle_control.h"
 #include "startup_fsm.h"
 #include "transport_control.h"
@@ -282,6 +283,7 @@ public:
 	void toggle_keep_tearoffs();
 	void show_plugin_manager();
 	void show_lua_window();
+	void show_colab_dialog();	
 	void show_realtime_analyzer();
 
 	void reset_focus (Gtk::Widget*);
@@ -686,6 +688,7 @@ private:
 	WM::Proxy<EngineControl> audio_midi_setup;
 	WM::Proxy<ExportVideoDialog> export_video_dialog;
 	WM::Proxy<LuaScriptManager> lua_script_window;
+	WM::Proxy<NovaColabDialog> colab_dialog;	
 	WM::Proxy<IdleOMeter> idleometer;
 	WM::Proxy<IOPluginWindow> io_plugin_window;
 	WM::Proxy<PluginManagerUI> plugin_manager_ui;

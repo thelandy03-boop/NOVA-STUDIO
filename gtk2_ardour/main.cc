@@ -409,14 +409,14 @@ int main (int argc, char *argv[])
 	}
 
 #ifdef PLATFORM_WINDOWS
-	CreateMutexA (0, 1, string_compose ("%1%2", PROGRAM_NAME, PROGRAM_VERSION).c_str ());
-	if (GetLastError() == ERROR_ALREADY_EXISTS) {
-		Gtk::Main main (argc, argv);
-		Gtk::MessageDialog msg (string_compose (_("%1 is already running."), PROGRAM_NAME),
-				false, Gtk::MESSAGE_ERROR , Gtk::BUTTONS_OK, true);
-		msg.run ();
-		exit (EXIT_FAILURE);
-	}
+        CreateMutexA (0, 1, string_compose ("%1%2", PROGRAM_NAME, PROGRAM_VERSION).c_str ());
+        if (GetLastError() == ERROR_ALREADY_EXISTS && !getenv("NOVA_ALLOW_MULTIPLE")) {
+                Gtk::Main main (argc, argv);
+                Gtk::MessageDialog msg (string_compose (_("%1 is already running."), PROGRAM_NAME),
+                                false, Gtk::MESSAGE_ERROR , Gtk::BUTTONS_OK, true);
+                msg.run ();
+                exit (EXIT_FAILURE);
+        }
 #endif
 
 #ifdef HAVE_DRMINGW

@@ -217,6 +217,7 @@ ARDOUR_UI::install_actions ()
 	ActionManager::write_sensitive_actions.push_back (act);
 
 	act = ActionManager::register_action (main_actions, X_("Scripting"), S_("Session|Scripting"));
+	ActionManager::register_action (main_actions, X_("toggle-colab-dialog"), S_("Window|Live Collaboration..."), sigc::mem_fun(*this, &ARDOUR_UI::show_colab_dialog));
 	ActionManager::session_sensitive_actions.push_back (act);
 
 	act = ActionManager::register_action (main_actions, X_("OpenVideo"), _("Open Video..."),

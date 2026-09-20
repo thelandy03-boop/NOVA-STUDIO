@@ -315,6 +315,7 @@ ARDOUR_UI::ARDOUR_UI (int *argcp, char **argvp[], const char* localedir)
 	, audio_midi_setup (X_("audio-midi-setup"), _("Audio/MIDI Setup"))
 	, export_video_dialog (X_("video-export"), _("Video Export Dialog"))
 	, lua_script_window (X_("script-manager"), _("Script Manager"))
+	, colab_dialog (X_("colab-dialog"), S_("Window|Live Collaboration..."))
 	, idleometer (X_("idle-o-meter"), _("Idle'o'Meter"))
 	, io_plugin_window (X_("io-plugins"), _("I/O Plugins"))
 	, plugin_manager_ui (X_("plugin-manager"), _("Plugin Manager"))
@@ -494,6 +495,7 @@ ARDOUR_UI::ARDOUR_UI (int *argcp, char **argvp[], const char* localedir)
 		audio_port_matrix.set_state (*ui_xml, 0);
 		midi_port_matrix.set_state (*ui_xml, 0);
 		luawindow.set_state (*ui_xml, 0);
+		colab_dialog.set_state (*ui_xml, 0);		
 		rtawindow.set_state (*ui_xml, 0);
 		export_video_dialog.set_state (*ui_xml, 0);
 		lua_script_window.set_state (*ui_xml, 0);
@@ -520,6 +522,7 @@ ARDOUR_UI::ARDOUR_UI (int *argcp, char **argvp[], const char* localedir)
 	WM::Manager::instance().register_window (&audio_midi_setup);
 	WM::Manager::instance().register_window (&export_video_dialog);
 	WM::Manager::instance().register_window (&lua_script_window);
+	WM::Manager::instance().register_window (&colab_dialog);	
 	WM::Manager::instance().register_window (&bundle_manager);
 	WM::Manager::instance().register_window (&location_ui);
 	WM::Manager::instance().register_window (&big_clock_window);

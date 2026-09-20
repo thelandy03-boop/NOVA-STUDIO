@@ -163,6 +163,7 @@
 #include "utils.h"
 #include "vca_time_axis.h"
 #include "verbose_cursor.h"
+#include "nova_colab_presence.h"
 
 #include "pbd/i18n.h"
 
@@ -791,6 +792,11 @@ Editor::Editor ()
 	UIConfiguration::instance().map_parameters (pc);
 
 	setup_fade_images ();
+	        setup_fade_images ();
+
+        /* NOVA-STUDIO: Conectar presencia Live Collaboration */
+        NovaColabPresence::instance().attach_to_editor (this);
+
 }
 
 Editor::~Editor()
@@ -3930,11 +3936,14 @@ Editor::set_samples_per_pixel (samplecnt_t spp)
 	 * days of audio on a really big screen, then it's too big.
 	 */
 
-	if (spp * lots_of_pixels > three_days) {
-		return;
-	}
+        if (spp * lots_of_pixels > three_days) {
+                return;
+        }
 
-	samples_per_pixel = spp;
+        samples_per_pixel = spp;
+
+        /* NOVA-STUDIO: Reposicionar Playheads colaborativos al cambiar el zoom */
+        NovaColabPresence::instance().reposition_all();
 }
 
 void
