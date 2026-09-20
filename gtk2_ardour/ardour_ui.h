@@ -80,42 +80,16 @@
 #include "editing.h"
 #include "enums.h"
 #include "region_ui_settings.h"
-#include "nova_colab_dialog.h"
+#include "route_dialogs.h"         // 👈 Agregado para declarar RouteDialogs
 #include "shuttle_control.h"
 #include "startup_fsm.h"
 #include "transport_control.h"
 #include "transport_control_ui.h"
 #include "visibility_group.h"
 #include "window_manager.h"
+#include "nova_colab_dialog.h"
 
-#ifdef COMPILER_MSVC
-#include "about.h"
-#include "add_video_dialog.h"
-#include "big_clock_window.h"
-#include "big_transport_window.h"
-#include "bundle_manager.h"
-#include "dsp_stats_window.h"
-#include "engine_dialog.h"
-#include "export_video_dialog.h"
-#include "global_port_matrix.h"
-#include "idleometer.h"
-#include "io_plugin_window.h"
-#include "keyeditor.h"
-#include "location_ui.h"
-#include "lua_script_manager.h"
-#include "luawindow.h"
-#include "plugin_dspload_window.h"
-#include "plugin_manager_ui.h"
-#include "rc_option_editor.h"
-#include "route_dialogs.h"
-#include "route_params_ui.h"
-#include "rta_window.h"
-#include "session_option_editor.h"
-#include "speaker_dialog.h"
-#include "transport_masters_dialog.h"
-#include "virtual_keyboard_window.h"
-#include "library_download_dialog.h"
-#else
+/* Forward Declarations of all Dialogs */
 class About;
 class AddRouteDialog;
 class AddVideoDialog;
@@ -142,7 +116,6 @@ class DspStatisticsWindow;
 class TransportMastersWindow;
 class VirtualKeyboardWindow;
 class LibraryDownloadDialog;
-#endif
 
 class VideoTimeLine;
 class ArdourKeyboard;
@@ -162,7 +135,6 @@ class Splash;
 class TimeInfoBox;
 class ApplicationBar;
 class Meterbridge;
-class LuaWindow;
 class MidiTracer;
 class PianorollWindow;
 class NSM_Client;
@@ -876,4 +848,3 @@ private:
 
 	PBD::ScopedConnectionList clock_state_connection;
 };
-
