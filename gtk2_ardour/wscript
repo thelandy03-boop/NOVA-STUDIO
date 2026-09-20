@@ -176,6 +176,7 @@ gtk2_ardour_sources = [
 'nova_toast.cc',
 'nova_colab_presence.cc',
 'nova_colab_network.cc',
+'nova_ui_kit.cc',
         'main.cc',
         'main_clock.cc',
         'marker.cc',
