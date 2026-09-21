@@ -1,6 +1,15 @@
 #ifndef __nova_colab_network_h__
 #define __nova_colab_network_h__
 
+/* PRE-INCLUDE WINDOWS SOCKETS 2 (Fix para MinGW64/Windows) */
+#ifdef _WIN32
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+#endif
+
 #include <string>
 #include <vector>
 #include <thread>
@@ -17,7 +26,8 @@ enum NovaNetMessageType {
 	NET_MSG_WELCOME,
 	NET_MSG_POSITION,
 	NET_MSG_TRANSPORT,
-	NET_MSG_LEAVE
+	NET_MSG_LEAVE,
+	NET_MSG_CHAT
 };
 
 struct NovaNetPacket {
@@ -34,24 +44,18 @@ class NovaColabNetwork
 public:
 	static NovaColabNetwork& instance ();
 
-	/* Iniciar Servidor Host en puerto 32550 */
 	bool start_server (int port = 32550);
-
-	/* Conectar a Host mediante IP / Link */
 	bool connect_to_host (const std::string& host_ip, int port = 32550);
-
-	/* Desconectar red y detener timers */
 	void disconnect ();
 
-	/* Enviar posición actual del Playhead */
 	void send_my_position (samplepos_t pos);
-
-	/* Enviar cambio de estado de Transporte (PLAY / STOP / SEEK) */
 	void send_transport_state (bool is_playing, samplepos_t pos);
+	void send_chat (const std::string& text);
 
 	bool is_connected () const { return _connected.load (); }
 	bool is_host () const { return _is_host.load (); }
 	std::string my_user_id () const { return _my_user_id; }
+	std::string my_user_name () const { return _my_user_name; }
 
 private:
 	NovaColabNetwork ();

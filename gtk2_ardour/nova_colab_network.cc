@@ -123,7 +123,6 @@ NovaColabNetwork::start_server (int port)
 	start_sync_timer ();
 	_net_thread = std::thread(&NovaColabNetwork::server_loop, this, port);
 
-	NovaToast::show_success(_("Servidor Host iniciado en puerto 32550"));
 	return true;
 }
 
@@ -191,7 +190,6 @@ NovaColabNetwork::server_loop (int port)
 				_client_sockets.push_back(new_socket);
 			}
 
-			// Enviar bienvenida al cliente recién conectado con info del Host
 			std::string welcome = "JOIN|" + _my_user_id + "|" + _my_user_name + "\n";
 			send_raw(new_socket, welcome);
 
@@ -229,7 +227,6 @@ NovaColabNetwork::client_loop (std::string ip, int port)
 
 	_connected = true;
 
-	// Saludar al Host
 	std::string join_msg = "JOIN|" + _my_user_id + "|" + _my_user_name + "\n";
 	send_raw(_socket_fd, join_msg);
 
@@ -267,22 +264,25 @@ void
 NovaColabNetwork::send_my_position (samplepos_t pos)
 {
 	std::string msg = "POS|" + _my_user_id + "|" + std::to_string(pos) + "\n";
-	if (_is_host) {
-		broadcast_raw(msg);
-	} else if (_socket_fd >= 0) {
-		send_raw(_socket_fd, msg);
-	}
+	if (_is_host) broadcast_raw(msg);
+	else if (_socket_fd >= 0) send_raw(_socket_fd, msg);
 }
 
 void
 NovaColabNetwork::send_transport_state (bool is_playing, samplepos_t pos)
 {
 	std::string msg = "TRP|" + _my_user_id + "|" + (is_playing ? "1" : "0") + "|" + std::to_string(pos) + "\n";
-	if (_is_host) {
-		broadcast_raw(msg);
-	} else if (_socket_fd >= 0) {
-		send_raw(_socket_fd, msg);
-	}
+	if (_is_host) broadcast_raw(msg);
+	else if (_socket_fd >= 0) send_raw(_socket_fd, msg);
+}
+
+void
+NovaColabNetwork::send_chat (const std::string& text)
+{
+	if (text.empty() || !_connected) return;
+	std::string msg = "CHAT|" + _my_user_id + "|" + _my_user_name + "|" + text + "\n";
+	if (_is_host) broadcast_raw(msg);
+	else if (_socket_fd >= 0) send_raw(_socket_fd, msg);
 }
 
 void
@@ -298,14 +298,12 @@ NovaColabNetwork::handle_incoming_data (const std::string& data, int source_fd)
 		std::getline(line_ss, cmd, '|');
 		std::getline(line_ss, uid, '|');
 
-		// Ignorar mis propios paquetes devueltos
 		if (uid == _my_user_id) continue;
 
 		if (cmd == "POS") {
 			std::getline(line_ss, param1, '|');
 			if (!param1.empty()) {
 				samplepos_t pos = std::stoll(param1);
-
 				NovaNetPacket* pkt = new NovaNetPacket();
 				pkt->type = NET_MSG_POSITION;
 				pkt->user_id = uid;
@@ -323,6 +321,19 @@ NovaColabNetwork::handle_incoming_data (const std::string& data, int source_fd)
 			Glib::signal_idle().connect(sigc::bind(sigc::ptr_fun(&NovaColabNetwork::on_idle_process_packet), pkt));
 
 			if (_is_host) broadcast_raw(line + "\n", source_fd);
+		} else if (cmd == "CHAT") {
+			std::getline(line_ss, param1, '|');
+			std::string msg;
+			std::getline(line_ss, msg);
+
+			NovaNetPacket* pkt = new NovaNetPacket();
+			pkt->type = NET_MSG_CHAT;
+			pkt->user_id = uid;
+			pkt->user_name = param1;
+			pkt->payload = msg;
+			Glib::signal_idle().connect(sigc::bind(sigc::ptr_fun(&NovaColabNetwork::on_idle_process_packet), pkt));
+
+			if (_is_host) broadcast_raw(line + "\n", source_fd);
 		}
 	}
 }
@@ -333,15 +344,19 @@ NovaColabNetwork::on_idle_process_packet (NovaNetPacket* pkt)
 	if (!pkt) return false;
 
 	if (pkt->type == NET_MSG_POSITION) {
-		/* Actualizar la línea de tiempo REAL del usuario remoto */
-		NovaColabPresence::instance().upsert_user(pkt->user_id, "User_B (Synced Playback)", "#00F0FF", pkt->position);
+		NovaColabPresence::instance().upsert_user(pkt->user_id, "User_B (Synced)", "#00F0FF", pkt->position);
 		NovaColabPresence::instance().set_position(pkt->user_id, pkt->position);
 	} else if (pkt->type == NET_MSG_JOIN) {
-		NovaToast::show_info(pkt->user_name + _(" conectado en tiempo real"));
+		NovaToast::show_info(pkt->user_name + _(" se ha unido"));
 		NovaColabPresence::instance().upsert_user(pkt->user_id, pkt->user_name, "#00F0FF", 0);
 		if (NovaColabDialog::instance()) {
 			NovaColabDialog::instance()->add_user(pkt->user_name, "Collaborator", "#00F0FF", false);
 		}
+	} else if (pkt->type == NET_MSG_CHAT) {
+		if (NovaColabDialog::instance()) {
+			NovaColabDialog::instance()->append_chat(pkt->user_name, pkt->payload);
+		}
+		NovaToast::show_info(pkt->user_name + ": " + pkt->payload);
 	}
 
 	delete pkt;
