@@ -66,6 +66,7 @@
 #include "opts.h"
 #include "enums.h"
 #include "bundle_env.h"
+#include "nova_juce_bridge.h"
 
 #include "pbd/i18n.h"
 
@@ -272,16 +273,6 @@ int main (int argc, char *argv[])
 			std::cerr << "localization call failed, " << PROGRAM_NAME << " will not be translated\n";
 		}
 	} else {
-		/* Force-disable localization if the user wishes so;
-		 * but leave system locale in place, for various user-provided names/paths.
-		 *
-		 * Using the "C" locale implies that only strict ASCII characters are valid
-		 * and causes various issues, notablt `g_convert_error` exceptions.
-		 * "C.utf8" works on system where it is supported but is not widely adopted.
-		 *
-		 * Setting "LANG" "LC_CTYPE" or "LC_ALL" to "C" will break various aspects,
-		 * but at least try to not translate some other system messages.
-		 */
 		const char* p = g_getenv ("ARDOUR_LOCALE_DEBUG");
 		int nls_debug = 0x06;
 		if (p && *p) {
@@ -289,27 +280,15 @@ int main (int argc, char *argv[])
 		}
 
 		if (nls_debug & 0x01) {
-#ifndef NDEBUG
-			std::cerr << "Setting LC_ALL = C\n";
-#endif
 			Glib::setenv ("LC_ALL", "C", true);
 		}
 		if (nls_debug & 0x02) {
-#ifndef NDEBUG
-			std::cerr << "Setting LANG = C\n";
-#endif
 			Glib::setenv ("LANG", "C", true);
 		}
 		if (nls_debug & 0x04) {
-#ifndef NDEBUG
-			std::cerr << "Setting LC_MESSAGES = C\n";
-#endif
 			Glib::setenv ("LC_MESSAGES", "C", true);
 		}
 		if (nls_debug & 0x08) {
-#ifndef NDEBUG
-			std::cerr << "Calling setlocale\n";
-#endif
 			if (!setlocale (LC_ALL, "")) {
 				std::cerr << "localization call failed\n";
 			}
@@ -318,29 +297,15 @@ int main (int argc, char *argv[])
 #endif
 
 #if (defined WINDOWS_VST_SUPPORT && !defined PLATFORM_WINDOWS)
-	/* this does some magic that is needed to make GTK and X11 client interact properly.
-	 * the platform dependent code is in windows_vst_plugin_ui.cc
-	 */
 	windows_vst_gui_init (&argc, &argv);
 #endif
 
 #if ENABLE_NLS
-
-#ifndef NDEBUG
-	cerr << "bind txt domain [" << PACKAGE << "] to " << localedir << endl;
-#endif
-
 	(void) bindtextdomain (PACKAGE, localedir.c_str());
-	/* our i18n translations are all in UTF-8, so make sure
-	   that even if the user locale doesn't specify UTF-8,
-	   we use that when handling them.
-	*/
 	(void) bind_textdomain_codeset (PACKAGE,"UTF-8");
 #endif
 
 	pthread_setcanceltype (PTHREAD_CANCEL_ASYNCHRONOUS, 0);
-
-	// catch error message system signals ();
 
 	text_receiver.listen_to (debug);
 	text_receiver.listen_to (info);
@@ -353,12 +318,6 @@ int main (int argc, char *argv[])
 		boost_debug_shared_ptr_show_live_debugging (true);
 	}
 #endif
-
-	/* This is horrible, but ... we don't want to init GTK until it is
-	 * really time (during a Gtkmm2ext::UI constructor. However, this will
-	 * try to load GTK modules too, so do this only if it appears that need
-	 * to do this.
-	 */
 
 	for (int n = 1; n < argc; ++n) {
 		if (!strncmp (argv[n], "--gtk", 5) || !strncmp (argv[n], "--gdk", 5)) {
@@ -420,13 +379,11 @@ int main (int argc, char *argv[])
 #endif
 
 #ifdef HAVE_DRMINGW
-	/* prevent missing libs popups */
 	UINT prev_error_mode = SetErrorMode (SEM_FAILCRITICALERRORS);
 	SetErrorMode (prev_error_mode | SEM_FAILCRITICALERRORS);
 	HMODULE exchndl = LoadLibraryA ("exchndl.dll");
 
 	if (exchndl) {
-		/* %localappdata%\Ardour<X>\CrashLog\ */
 		string crash_dir = Glib::build_filename (Glib::get_user_data_dir (), string_compose ("%1%2", PROGRAM_NAME, PROGRAM_VERSION), "CrashLog");
 		g_mkdir_with_parents (crash_dir.c_str(), 0700);
 
@@ -444,11 +401,7 @@ int main (int argc, char *argv[])
 			exchndl_init ();
 			exchndl_path (crash_path.c_str());
 			cout << "Crash Log: " << crash_path << endl;
-		} else {
-			cout << "Cannot initialize crash reporter" << endl;
 		}
-	} else {
-		cout << "Crash reporter is not compatible with this system" << endl;
 	}
 	SetErrorMode (prev_error_mode);
 #endif
@@ -469,24 +422,15 @@ int main (int argc, char *argv[])
 	}
 #endif
 
-#if !(defined NDEBUG || defined PLATFORM_WINDOWS)
-	if (g_getenv ("ARDOUR_DEBUG_ON_SIGUSR1")) {
-		if (::signal (SIGUSR1, sigusr1_handler)) {
-			cerr << _("Cannot install SIGUSR1 error handler") << endl;
-		} else {
-			cerr << _("Installed SIGUSR1 debug handler") << endl;
-		}
-	}
-#endif
-
-	DEBUG_TRACE (DEBUG::Locale, string_compose ("main() locale '%1'\n", setlocale (LC_NUMERIC, NULL)));
-
 	setup_gtk_ardour_enums ();
 
 	if (UIConfiguration::instance().pre_gui_init ()) {
 		error << _("Could not complete pre-GUI initialization") << endmsg;
 		exit (EXIT_FAILURE);
 	}
+
+	/* --- INICIALIZAR PUENTE JUCE --- */
+	NovaJuceBridge::init();
 
 	try {
 		ui = new ARDOUR_UI (&argc, &argv, localedir.c_str());
@@ -504,27 +448,17 @@ int main (int argc, char *argv[])
 	delete ui;
 	ui = 0;
 
+	/* --- APAGAR PUENTE JUCE --- */
+	NovaJuceBridge::shutdown();
+
 	ARDOUR::cleanup ();
-#ifndef NDEBUG
-	if (getenv ("ARDOUR_RUNNING_UNDER_VALGRIND")) {
-		Glib::usleep(100000);
-		sched_yield();
-	}
-#endif
 
 	pthread_cancel_all ();
-
-#ifndef NDEBUG
-	if (getenv ("ARDOUR_RUNNING_UNDER_VALGRIND")) {
-		Glib::usleep(100000);
-		sched_yield();
-	}
-#endif
-
 	console_madness_end ();
 
 	return 0;
 }
+
 #if (defined WINDOWS_VST_SUPPORT && !defined PLATFORM_WINDOWS)
 } // end of extern "C" block
 #endif

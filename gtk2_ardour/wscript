@@ -56,7 +56,6 @@ gtk2_ardour_sources = [
         'automation_text_entry.cc',
         'automation_time_axis.cc',
         'axis_view.cc',
-        # 'beatbox_gui.cc',
         'bbt_marker_dialog.cc',
         'big_clock_window.cc',
         'big_transport_window.cc',
@@ -162,21 +161,33 @@ gtk2_ardour_sources = [
         'luadialog.cc',
         'luainstance.cc',
         'luawindow.cc',
-    # Dentro de la lista de fuentes (sources) de 'gtk2_ardour':
-    'nova_script_editor.cc',
-    'nova_search_bar.cc',
-    'nova_lua_linter.cc',
-    'nova_autocomplete.cc',
-    'nova_file_explorer.cc',
-    'nova_lua_console.cc',
-    'nova_reaper_compat.cc',
-    'nova_jsfx_parser.cc',
-    'nova_jsfx_window.cc',
-'nova_colab_dialog.cc',
-'nova_toast.cc',
-'nova_colab_presence.cc',
-'nova_colab_network.cc',
-'nova_ui_kit.cc',
+        'nova_script_editor.cc',
+        'nova_search_bar.cc',
+        'nova_lua_linter.cc',
+        'nova_autocomplete.cc',
+        'nova_file_explorer.cc',
+        'nova_lua_console.cc',
+        'nova_reaper_compat.cc',
+        'nova_jsfx_parser.cc',
+        'nova_jsfx_window.cc',
+        'nova_colab_dialog.cc',
+        'nova_juce_bridge.cc',
+        'nova_juce_core.cpp',
+        'nova_juce_core_time.cpp',
+        'nova_juce_events.cpp',
+        'nova_juce_graphics.cpp',
+        'nova_juce_data_structures.cpp',
+        'nova_juce_lunasvg.c',
+        'nova_juce_sheenbidi.c',
+        'nova_juce_gui_basics_1.cpp',
+        'nova_juce_gui_basics_2.cpp',
+        'nova_juce_gui_basics_3.cpp',
+        'nova_juce_gui_basics_4.cpp',
+        'nova_juce_gui_basics_5.cpp',
+        'nova_toast.cc',
+        'nova_colab_presence.cc',
+        'nova_colab_network.cc',
+        'nova_ui_kit.cc',
         'main.cc',
         'main_clock.cc',
         'marker.cc',
@@ -263,9 +274,9 @@ gtk2_ardour_sources = [
         'port_matrix_grid.cc',
         'port_matrix_labels.cc',
         'port_matrix_row_labels.cc',
-	'prh.cc',
-	'prh_base.cc',
-	'processor_box.cc',
+        'prh.cc',
+        'prh_base.cc',
+        'processor_box.cc',
         'processor_selection.cc',
         'patch_change_dialog.cc',
         'progress_reporter.cc',
@@ -374,14 +385,13 @@ gtk2_ardour_sources = [
         'virtual_keyboard_window.cc',
         'visibility_group.cc',
         'window_manager.cc',
-        # video-timeline related sources:
         'video_image_frame.cc',
         'add_video_dialog.cc',
         'editor_videotimeline.cc',
         'vca_time_axis.cc',
         'video_timeline.cc',
         'video_monitor.cc',
-	'view_background.cc',
+        'view_background.cc',
         'transcode_ffmpeg.cc',
         'transcode_video_dialog.cc',
         'velocity_display.cc',
@@ -392,11 +402,6 @@ gtk2_ardour_sources = [
 ]
 
 def enoify (major, minor):
-    # Code names based on
-    # https://en.wikipedia.org/wiki/Brian_Eno_discography
-    #
-    # sort Studio albums + Collaborative albums + Compilation albums by Month/Year.
-    # (no Singles, no EPs, no Video Albums, no Production)
     if major == 3:
         return "\\n\\\"E-No\\\""
     elif major == 4:
@@ -430,107 +435,102 @@ def enoify (major, minor):
         elif minor == 5:
             return "\\n\\\"The Plateaux of Mirror\\\""
         elif minor == 6:
-            return "\\n\\\"Possible Musics\\\"" # 1980 Collaborative
+            return "\\n\\\"Possible Musics\\\""
         elif minor == 7:
-            return "\\n\\\"My Life in the Bush of Ghosts\\\"" # 1981
+            return "\\n\\\"My Life in the Bush of Ghosts\\\""
         elif minor == 8:
-            return "\\n\\\"Music for Airplay\\\"" # 1981 Compilation
+            return "\\n\\\"Music for Airplay\\\""
         elif minor == 9:
-            return "\\n\\\"On Land\\\"" # 1982
+            return "\\n\\\"On Land\\\""
         elif minor == 10:
-            return "\\n\\\"Atmospheres and Soundtracks\\\"" # 1983
+            return "\\n\\\"Atmospheres and Soundtracks\\\""
         elif minor == 11:
-            return "\\n\\\"More Music for Films\\\"" # 1983
+            return "\\n\\\"More Music for Films\\\""
         elif minor == 12:
-            return "\\n\\\"Working Backwards\\\"" # 1984 Compilation
+            return "\\n\\\"Working Backwards\\\""
     elif major == 6:
         if minor == 0:
-            return "\\n\\\"The Pearl\\\"" # 1984 Collaborative
+            return "\\n\\\"The Pearl\\\""
         elif minor == 1:
-            return "\\n\\\"Begegnungen\\\"" # 1984 Compilation
+            return "\\n\\\"Begegnungen\\\""
         elif minor == 2:
-            return "\\n\\\"Thursday Afternoon\\\"" # 1985
+            return "\\n\\\"Thursday Afternoon\\\""
         elif minor == 3:
-            return "\\n\\\"Hybrid\\\"" # 1985 Collaborative
-        elif minor == 4 or minor == 5: # (there was on 6.4 release)
-            return "\\n\\\"Old Land\\\"" # 1985 Compilation
-        elif minor == 6 or minor == 7: # still on the desert island
-            return "\\n\\\"Desert Island Selection\\\"" # 1986 Compilation
+            return "\\n\\\"Hybrid\\\""
+        elif minor == 4 or minor == 5:
+            return "\\n\\\"Old Land\\\""
+        elif minor == 6 or minor == 7:
+            return "\\n\\\"Desert Island Selection\\\""
         else:
-            return "\\n\\\"After Bach\\\"" # the odd one out
+            return "\\n\\\"After Bach\\\""
     elif major == 7:
         if minor == 0:
-            return "\\n\\\"More Blank Than Frank\\\"" # 1986 Compilation
+            return "\\n\\\"More Blank Than Frank\\\""
         if minor == 1:
-            return "\\n\\\"Music for Films III\\\"" # 1988 Collaborative
+            return "\\n\\\"Music for Films III\\\""
         if minor == 2:
-            return "\\n\\\"Wrong Way Up\\\"" # 1990 Collaborative
+            return "\\n\\\"Wrong Way Up\\\""
         if minor == 3:
-            return "\\n\\\"Nerve Net\\\"" # 1992
+            return "\\n\\\"Nerve Net\\\""
         if minor == 4:
-            return "\\n\\\"The Shutov Assembly\\\"" # 1992
+            return "\\n\\\"The Shutov Assembly\\\""
         if minor == 5:
-            return "\\n\\\"Neroli\\\"" # 1993
+            return "\\n\\\"Neroli\\\""
     elif major == 8:
         if minor == 0:
-            return "\\n\\\"Spinner\\\"" # 1995
+            return "\\n\\\"Spinner\\\""
         if minor == 1:
-            return "\\n\\\"The Drop\\\"" # 1997
+            return "\\n\\\"The Drop\\\""
         if minor == 2:
-            return "\\n\\\"Tracks and Traces\\\"" # 1997
+            return "\\n\\\"Tracks and Traces\\\""
         if minor == 3:
-            return "\\n\\\"Music for White Cube\\\"" # 1997
+            return "\\n\\\"Music for White Cube\\\""
         if minor == 4:
-            return "\\n\\\"Music for the Marble Palace\\\"" # 1998
+            return "\\n\\\"Music for the Marble Palace\\\""
         if minor == 5:
-            return "\\n\\\"I Dormienti\\\"" # 1999
+            return "\\n\\\"I Dormienti\\\""
         if minor == 6:
-            return "\\n\\\"Kite Stories\\\"" # 1999
+            return "\\n\\\"Kite Stories\\\""
         if minor >= 7:
-            return "\\n\\\"Sonora Portraits\\\"" # 1999 Compilation
+            return "\\n\\\"Sonora Portraits\\\""
     elif major == 9:
         if minor == 0:
-            return "\\n\\\"Music for Civic Recovery Centre\\\"" # 2000
+            return "\\n\\\"Music for Civic Recovery Centre\\\""
         if minor == 1:
-            return "\\n\\\"Music for Onmyo-Ji\\\"" # 2000 Collaborative
+            return "\\n\\\"Music for Onmyo-Ji\\\""
         if minor == 2:
-            return "\\n\\\"Compact Forest Proposal\\\"" # 2001
+            return "\\n\\\"Compact Forest Proposal\\\""
         if minor >= 3 and minor <= 5:
-            return "\\n\\\"Drawn from Life\\\"" # 2001 Collaborative
+            return "\\n\\\"Drawn from Life\\\""
         if minor >= 6 and minor <= 7:
-            return "\\n\\\"Bell Studies for the Clock of the Long Now\\\"" # 2003
+            return "\\n\\\"Bell Studies for the Clock of the Long Now\\\""
         if minor == 8:
-            return "\\n\\\"The Equatorial Stars\\\"" # 2004 Collaborative
+            return "\\n\\\"The Equatorial Stars\\\""
         if minor == 9:
-            return "\\n\\\"Another Day on Earth\\\"" # 2005
+            return "\\n\\\"Another Day on Earth\\\""
         if minor == 10:
-            return "\\n\\\"77 Million Paintings\\\"" # 2006
+            return "\\n\\\"77 Million Paintings\\\""
         if minor == 11:
-            return "\\n\\\"Beyond Even\\\"" # 2007 Collaborative
+            return "\\n\\\"Beyond Even\\\""
         if minor == 12:
-            return "\\n\\\"Making Space \\\"" # 2010
+            return "\\n\\\"Making Space \\\""
     return "\\\"\\\""
 
 def options(opt):
     pass
 
 def configure(conf):
-    conf.load('misc')  # make 'command-output' available
+    conf.load('misc')
 
-    # TODO: Insert a sanity check for on OS X to ensure CoreAudio is present
-
-    autowaf.check_pkg(conf, 'fftw3f', uselib_store='FFTW3F',
-                      mandatory=True)
-    autowaf.check_pkg(conf, 'flac', uselib_store='FLAC',
-                      atleast_version='1.2.1')
-    autowaf.check_pkg(conf, 'gthread-2.0', uselib_store='GTHREAD',
-                      atleast_version='2.10.1')
+    autowaf.check_pkg(conf, 'fftw3f', uselib_store='FFTW3F', mandatory=True)
+    autowaf.check_pkg(conf, 'flac', uselib_store='FLAC', atleast_version='1.2.1')
+    autowaf.check_pkg(conf, 'gthread-2.0', uselib_store='GTHREAD', atleast_version='2.10.1')
     autowaf.check_pkg(conf, 'ogg', uselib_store='OGG', atleast_version='1.1.2')
     autowaf.check_pkg(conf, 'x11', uselib_store='X11', atleast_version='1.1', mandatory=False)
     autowaf.check_pkg(conf, 'pangoft2', uselib_store='PANGOFT2', atleast_version='1.36.8', mandatory=False)
     autowaf.check_pkg(conf, 'fontconfig', uselib_store='FONTCONFIG')
 
-    conf.check(header_name='unistd.h', define_name='HAVE_UNISTD_H',mandatory=False)
+    conf.check(header_name='unistd.h', define_name='HAVE_UNISTD_H', mandatory=False)
 
     if conf.env.CC_NAME == 'gcc' and Options.options.strict:
         conf.define('GLIB_DISABLE_DEPRECATION_WARNINGS', 1)
@@ -541,8 +541,6 @@ def configure(conf):
 
     if sys.platform == 'darwin':
         if conf.env['build_target'] in ['bigsur', 'monterey']:
-            # we cannot execute test code when x-compiling ARM on Intel,
-            # besides, NSWindowWillStartLiveResizeNotification is definitely available
             conf.define('HAVE_COCOA_LIVE_RESIZING', 1)
         else:
             conf.check(
@@ -567,110 +565,17 @@ def configure(conf):
 def build(bld):
     I18N_PACKAGE = 'gtk2_ardour' + bld.env['MAJOR']
 
-    # Tool to dump lua-bindings (of gtk2ardour + libs)
-    if re.search ("linux", sys.platform) != None and bld.env['LUABINDINGDOC']:
-        obj = bld (features = 'cxx c cxxprogram')
-        obj.install_path = None
-        obj.source    = list(gtk2_ardour_sources)
-        obj.target    = 'luadoc'
-        obj.includes  = ['.', '../libs', '../libs/vst3']
-        obj.use       = [
-                'libpbd',
-                'libardour',
-                'libardour_cp',
-                'libtemporal',
-                'libmidipp',
-                'libgtkmm2ext', 'libscintilla',
-                'libscintilla',
-                'libcanvas',
-                'libwaveview',
-                'libwidgets',
-                'libptformat',
-                ]
-        obj.defines = [
-                'NOMAIN',
-                'PACKAGE="' + I18N_PACKAGE + '"',
-                'DATA_DIR="' + autowaf.normpath(bld.env['DATADIR']) + '"',
-                'CONFIG_DIR="' + autowaf.normpath(bld.env['SYSCONFDIR']) + '"',
-                'LOCALEDIR="' + autowaf.normpath(bld.env['LOCALEDIR']) + '"',
-                ]
-        obj.linkflags = ''
-        obj.uselib       = 'UUID FLAC FONTCONFIG GTHREAD GTK OGG PANGOMM CURL DL CANVAS FFTW3F LO TAGLIB XML LILV RUBBERBAND AUBIO LRDF ARCHIVE VAMPSDK VAMPHOSTSDK'
-        obj.source += [ 'luadoc.cc', 'bundle_env_linux.cc' ]
-        obj.use    += [ 'X11' ]
-        obj.use    += [ 'libytk', 'libytkmm' ]
-        obj.uselib += ' GLIBMM GIOMM PANGOMM PANGOFT2 LIBPNG LIBJPEG'
-
-        if False and bld.is_defined('USE_EXTERNAL_LIBS'):
-            obj.uselib += ' LIBAAF'
-        else:
-            obj.use.extend (['libaaf'])
-
-        if bld.is_defined('HAVE_USB'):
-            obj.uselib += ' USB'
-        if bld.is_defined('HAVE_SUIL'):
-            obj.source += [ 'lv2_plugin_ui.cc' ]
-            obj.use += [ 'libsuil' ]
-        if bld.is_defined('LXVST_SUPPORT'):
-            obj.source += [ 'vst_plugin_ui.cc' ]
-            obj.source += [ 'linux_vst_gui_support.cc', 'lxvst_plugin_ui.cc' ]
-            obj.defines += [ 'LXVST_SUPPORT' ]
-
-        if bld.is_defined('VST3_SUPPORT'):
-            obj.source += [ 'vst3_plugin_ui.cc' ]
-            if sys.platform == 'darwin':
-                obj.source += [ 'vst3_nsview_plugin_ui.mm' ]
-            elif bld.env['build_target'] == 'mingw' or bld.env['build_target'] == 'msvc':
-                obj.source += [ 'vst3_hwnd_plugin_ui.cc' ]
-            else:
-                obj.source += [ 'vst3_x11_plugin_ui.cc' ]
-
-#    # Tool to test libcanvas
-#    if re.search ("linux", sys.platform) != None and bld.env['CANVASTESTUI']:
-#        obj = bld (features = 'cxx c cxxprogram')
-#        obj.install_path = None
-#        obj.source    = list(gtk2_ardour_sources)
-#        obj.source    = [ 'ardour_button.cc', 'ui_config.cc', 'tooltips.cc' ]
-#        obj.target    = 'canvas_test'
-#        obj.includes  = ['.', '../libs']
-#        obj.use       = [
-#                'libpbd',
-#                'libardour',
-#                'libardour_cp',
-#                'libtemporal',
-#                'libmidipp',
-#                'libgtkmm2ext', 'libscintilla',
-#                'libcanvas',
-#                'libptformat',
-#                ]
-#        obj.defines = [
-#                'NOMAIN',
-#                'PACKAGE="' + I18N_PACKAGE + '"',
-#                'DATA_DIR="' + os.path.normpath(bld.env['DATADIR']) + '"',
-#                'CONFIG_DIR="' + os.path.normpath(bld.env['SYSCONFDIR']) + '"',
-#                'LOCALEDIR="' + os.path.normpath(bld.env['LOCALEDIR']) + '"',
-#                ]
-#        obj.linkflags = ''
-#        obj.uselib    = 'UUID FLAC FONTCONFIG GLIBMM GTHREAD GTK OGG CURL DL GTKMM CANVAS FFTW3F LO TAGLIB XML '
-#        # obj.source += [ 'canvas_test.cc', ]
-#        obj.source += [ 'toolbar_test.cc', 'enums.cc']
-
-    # executable version of the GTK GUI
     if bld.env['build_target'] == 'mingw' or bld.env['build_target'] == 'msvc':
         obj = bld (features = 'cxx c cxxprogram')
     else:
         obj = bld (features = 'cxx c cxxprogram')
 
-    # operate on copy to avoid adding sources twice
     obj.source    = list(gtk2_ardour_sources)
     obj.target    = 'ardour-' + bld.env['VERSION']
-    obj.includes  = ['.']
+    obj.includes  = ['.', '../libs', '../libs/vst3', '../libs/juce', '../libs/juce/modules']
 
     if bld.is_defined('WINDOWS_VST_SUPPORT'):
         obj.includes += [ '../libs/fst' ]
-
-    # at this point, "obj" refers to either the normal native executable
-    # OR the shared library built for use with wine on linux.
 
     obj.use      = [ 'libpbd',
                      'libardour',
@@ -716,15 +621,19 @@ def build(bld):
     elif bld.env['build_target'] == 'mingw':
         obj.source += [ 'bundle_env_mingw.cc' ]
         obj.source += [ 'windows_icon.rc' ]
+        obj.lib = getattr(obj, 'lib', []) + [
+            'gdi32', 'user32', 'kernel32', 'comdlg32', 'winmm', 'wininet',
+            'ole32', 'oleaut32', 'uuid', 'rpcrt4', 'advapi32', 'ws2_32',
+            'shlwapi', 'dwmapi', 'version',
+            'd2d1', 'd3d11', 'dxgi', 'dcomp', 'dwrite', 'windowscodecs',
+            'dxguid', 'imm32', 'comctl32', 'shcore', 'oleacc'
+        ]
     elif bld.env['build_target'] == 'msvc':
         obj.source += [ 'bundle_env_msvc2.cc' ]
         obj.source += [ 'windows_icon.rc' ]
     else:
         obj.source += [ 'bundle_env_linux.cc' ]
         obj.use += [ 'X11' ]
-
-    obj.includes += ['../libs']
-    obj.includes += ['../libs/vst3']
 
     if bld.env['build_target'] == 'mingw' or bld.env['build_target'] == 'msvc':
         obj.use += [ 'PANGOFT2' ]
@@ -774,8 +683,6 @@ def build(bld):
         else:
             obj.source += [ 'vst3_x11_plugin_ui.cc' ]
 
-    # Wrappers
-
     wrapper_subst_dict = {
             'INSTALL_PREFIX' : bld.env['PREFIX'],
             'LIBDIR'         : os.path.normpath(bld.env['DLLDIR']),
@@ -787,13 +694,9 @@ def build(bld):
     }
 
     if bld.env['build_target'] in ('mingw', 'msvc') and sys.platform == "win32":
-        wrapper_subst_dict.update({
-            'LD_LIBRARY_PATH': 'PATH'
-        })
+        wrapper_subst_dict.update({'LD_LIBRARY_PATH': 'PATH'})
     else:
-        wrapper_subst_dict.update({
-            'LD_LIBRARY_PATH': 'LD_LIBRARY_PATH'
-        })
+        wrapper_subst_dict.update({'LD_LIBRARY_PATH': 'LD_LIBRARY_PATH'})
 
     def set_subst_dict(obj, dict):
         for i in dict:
@@ -814,51 +717,26 @@ def build(bld):
     obj.install_path = bld.env['BINDIR']
     set_subst_dict(obj, wrapper_subst_dict)
 
-    # Font configuration
-
     font_subst_dict = {}
     font_sizes      = {}
 
-    # Set up font sizes
     if sys.platform == 'darwin':
         basefont = ""
         font_sizes = {
-                'VERYSMALL' : '7',
-                'SMALLER' : '9',
-                'SMALL' : '10',
-                'NORMAL' : '11',
-                'BIG' : '13',
-                'BIGGER' : '17',
-                'LARGE' : '18',
-                'LARGER' : '28',
-                'HUGER' : '36',
-                'MASSIVE' : '60',
+                'VERYSMALL' : '7', 'SMALLER' : '9', 'SMALL' : '10', 'NORMAL' : '11',
+                'BIG' : '13', 'BIGGER' : '17', 'LARGE' : '18', 'LARGER' : '28',
+                'HUGER' : '36', 'MASSIVE' : '60',
         }
-        font_names = {
-                'MONOSPACE' : 'ArdourMono',
-                'CLOCKFONT' : 'ArdourMono',
-                }
-    else: # Linux/X11 & Windows fonts
-        basefont = '' # unspecified - use system defaults
+        font_names = {'MONOSPACE' : 'ArdourMono', 'CLOCKFONT' : 'ArdourMono'}
+    else:
+        basefont = ''
         font_sizes = {
-                'VERYSMALL' : '8',
-                'SMALLER' : '6',
-                'SMALL' : '7',
-                'NORMAL' : '8',
-                'BIG' : '11',
-                'BIGGER' : '13.5',
-                'LARGE' : '14.5',
-                'LARGER' : '19',
-                'HUGER' : '27',
-                'MASSIVE' : '48',
+                'VERYSMALL' : '8', 'SMALLER' : '6', 'SMALL' : '7', 'NORMAL' : '8',
+                'BIG' : '11', 'BIGGER' : '13.5', 'LARGE' : '14.5', 'LARGER' : '19',
+                'HUGER' : '27', 'MASSIVE' : '48',
         }
-        font_names = {
-                'MONOSPACE' : 'ArdourMono',
-                'CLOCKFONT' : 'ArdourMono',
-        }
+        font_names = {'MONOSPACE' : 'ArdourMono', 'CLOCKFONT' : 'ArdourMono'}
 
-    # Set up font substitution dictionary
-    # @FONT_XXXX@
     for style in ['', 'BOLD', 'ITALIC']:
         for sizename,points in iter(font_sizes.items()):
             if (len (style)):
@@ -867,21 +745,17 @@ def build(bld):
             else:
                 key = "_".join (['FONT',sizename])
                 fontstyle = " ".join ([basefont,points])
-
             font_subst_dict[key] = fontstyle
 
-    # @FONT_SIZE_XXXX@
     for sizename,points in iter(font_sizes.items()):
         key = "_".join (['FONT_SIZE',sizename])
         font_subst_dict[key] = points
 
-    # various font names, eg @BOLD_MONOSPACE@
     for font_sym,text in iter(font_names.items()):
         key = font_sym
         font_subst_dict[key] = text
 
     font_subst_dict['FONTFAMILY'] = ''
-    # RC file
 
     obj              = bld(features = 'subst')
     obj.source       = [ 'clearlooks.rc.in' ]
@@ -903,7 +777,6 @@ def build(bld):
     obj.install_path = bld.env['CONFDIR']
     set_subst_dict(obj, font_subst_dict)
 
-    # Menus
     menus_argv = []
     if sys.platform == 'darwin':
         menus_argv = [ '-E', '-P', '-D__APPLE__', '-' ]
@@ -912,20 +785,10 @@ def build(bld):
     else:
         menus_argv = [ '-E', '-P' ]
 
-    if bld.is_defined('MIXBUS'):
-        menus_argv += [ '-DMIXBUS' ]
-
-    if bld.is_defined('PTFORMAT'):
-        menus_argv += [ '-DPTFORMAT' ]
-
-    if bld.is_defined('MIXBUS') or bld.env['DEBUG']:
-        menus_argv += [ '-DVAPOR' ]
-
-    if not bld.env['DEBUG']:
-        menus_argv += [ '-DNDEBUG' ]
-
-    # always build all versions of the menu definitions
-    # so that we can try them out with different program builds.
+    if bld.is_defined('MIXBUS'): menus_argv += [ '-DMIXBUS' ]
+    if bld.is_defined('PTFORMAT'): menus_argv += [ '-DPTFORMAT' ]
+    if bld.is_defined('MIXBUS') or bld.env['DEBUG']: menus_argv += [ '-DVAPOR' ]
+    if not bld.env['DEBUG']: menus_argv += [ '-DNDEBUG' ]
 
     obj = bld(features = 'command-output')
     if bld.env['build_target'] == 'msvc':
@@ -946,7 +809,6 @@ def build(bld):
     obj.stdout = 'ardour.menus'
     bld.install_files (bld.env['CONFDIR'], 'ardour.menus')
 
-    # Freedesktop
     freedesktop_subst_dict = {
                     'ARDOUR_EXEC' : bld.env['lwrcase_dirname'],
                     'ARDOUR_ICON' : bld.env['lwrcase_dirname'],
@@ -969,7 +831,6 @@ def build(bld):
         obj.chmod        = Utils.O644
         bld.install_files (os.path.join (bld.env['PREFIX'], 'share/mime/packages'), obj.target)
 
-        # build appdata with translations
         appdata_i18n_mo(bld)
         appdata_i18n_xmlin(bld)
         obj              = bld(features = 'subst')
@@ -980,7 +841,6 @@ def build(bld):
         set_subst_dict(obj, freedesktop_subst_dict)
         bld.install_files (os.path.join (bld.env['PREFIX'], 'share/appdata'), obj.target)
 
-        # install desktop icon files
         icon_file_name = bld.env['lwrcase_dirname'] + '.png'
         bld.install_as('${PREFIX}/share/icons/hicolor/16x16/apps/' + icon_file_name, 'resources/Ardour-icon_16px.png')
         bld.install_as('${PREFIX}/share/icons/hicolor/22x22/apps/'+ icon_file_name, 'resources/Ardour-icon_22px.png')
@@ -989,16 +849,6 @@ def build(bld):
         bld.install_as('${PREFIX}/share/icons/hicolor/256x256/apps/'+ icon_file_name, 'resources/Ardour-icon_256px.png')
         bld.install_as('${PREFIX}/share/icons/hicolor/512x512/apps/'+ icon_file_name, 'resources/Ardour-icon_512px.png')
 
-    # Keybindings
-
-    # NATIVE ARDOUR BINDING FILES
-    # explicitly state the use of perl here so that it works on windows too
-    #
-    #
-    # ***** NOTE: THE CANONICAL LIST OF FILES PROCESSED FOR BINDINGS IS INSIDE ../tools/fmt-bindings
-    #
-    # If you add or delete some ,bindings files, be sure to edit fmt_bindings too, or better yet,
-    # hack fmt-bindings and this wscript file so that the list is defined here and passed in.
     if sys.version_info[0] > 2:
         a_rule = '%s %s/tools/fmt-bindings.py --platform="%s" --winkey="%s" --accelmap 1 ${SRC[0].abspath()} >${TGT}' % (sys.executable, bld.top_dir, sys.platform, bld.env['WINDOWS_KEY'])
     else:
@@ -1011,72 +861,54 @@ def build(bld):
             )
         obj.install_path = bld.env['CONFDIR']
 
-    # Icons/Images
     bld.install_files(os.path.join (bld.env['DATADIR'], 'icons'), bld.path.ant_glob('icons/*.png'))
     bld.install_files(os.path.join (bld.env['DATADIR'], 'icons', 'scripting'), bld.path.ant_glob('icons/scripting/*.png'))
     bld.install_files(bld.env['DATADIR'], 'ArdourMono.ttf')
     bld.install_files(bld.env['DATADIR'], 'ArdourSans.ttf')
 
-    # Application/Product specific resources (icon, splash)
     pgmname = bld.env['PROGRAM_NAME']
     bld.install_files(os.path.join(bld.env['DATADIR'], 'resources'), bld.path.ant_glob('resources/' + pgmname + '*'))
 
     if bld.env['build_target'] == 'mingw' or bld.env['build_target'] == 'msvc':
-        # These icons need to overwrite the files already installed in the icons
-        # directory above. Do this in the external packaging scripts for now.
-        #bld.install_files(os.path.join (bld.env['DATADIR'], 'icons'), bld.path.ant_glob('icons/cursor_square/*.png'))
         bld.install_files(os.path.join (bld.env['DATADIR'], 'icons'), 'icons/cursor_square/hotspots')
 
-    # Default UI configuration
     bld.install_files(bld.env['CONFDIR'], 'default_ui_config')
-    # Color Themes. Find each color file for this program only
-    # and install
     bld.install_files (os.path.join(bld.env['DATADIR'], 'themes'), bld.path.ant_glob ('themes/*-' + pgmname.lower() + '.colors'))
-
-    # Default export stuff
     bld.install_files(os.path.join(bld.env['CONFDIR'], 'export'), bld.path.ant_glob('export/*.format'))
 
-    # i18n
     if bld.is_defined('ENABLE_NLS'):
         mo_files = bld.path.ant_glob('po/*.mo')
         for mo in mo_files:
             lang = os.path.basename(mo.srcpath()).replace('.mo', '')
-            bld.install_as (os.path.join(os.path.normpath(bld.env['LOCALEDIR']), lang, 'LC_MESSAGES', I18N_PACKAGE + '.mo'),
-                            mo)
+            bld.install_as (os.path.join(os.path.normpath(bld.env['LOCALEDIR']), lang, 'LC_MESSAGES', I18N_PACKAGE + '.mo'), mo)
 
 def i18n_func(bld):
     I18N_PACKAGE = 'gtk2_ardour' + bld.env['MAJOR']
-    autowaf.build_i18n(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources,
-                       'Paul Davis')
+    autowaf.build_i18n(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources, 'Paul Davis')
     appdata_i18n_pot(bld)
     appdata_i18n_po(bld)
     appdata_i18n_mo(bld)
 
 def i18n_pot_func(bld):
     I18N_PACKAGE = 'gtk2_ardour' + bld.env['MAJOR']
-    autowaf.build_i18n_pot(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources,
-                           'Paul Davis')
+    autowaf.build_i18n_pot(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources, 'Paul Davis')
     appdata_i18n_pot(bld)
 
 def i18n_po_func(bld):
     I18N_PACKAGE = 'gtk2_ardour' + bld.env['MAJOR']
-    autowaf.build_i18n_po(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources,
-                          'Paul Davis')
+    autowaf.build_i18n_po(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources, 'Paul Davis')
     appdata_i18n_po(bld)
 
 def i18n_mo_func(bld):
     I18N_PACKAGE = 'gtk2_ardour' + bld.env['MAJOR']
-    autowaf.build_i18n_mo(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources,
-                          'Paul Davis')
+    autowaf.build_i18n_mo(bld, '.', 'gtk2_ardour', I18N_PACKAGE, gtk2_ardour_sources, 'Paul Davis')
 
 def appdata_i18n_pot(bld):
-    potfile = os.path.join(bld.top_dir, 'gtk2_ardour', 'appdata',
-            'ardour.appdata.pot')
+    potfile = os.path.join(bld.top_dir, 'gtk2_ardour', 'appdata', 'ardour.appdata.pot')
     if bld.cmd in ('i18n_pot', 'i18n'):
         Logs.info('Generating pot file from Ardour appdata')
         itsfile = os.path.join(bld.top_dir, 'tools', 'as-metainfo.its')
-        adsource = os.path.join(bld.top_dir, 'gtk2_ardour',
-                'ardour.appdata.xml.in.in')
+        adsource = os.path.join(bld.top_dir, 'gtk2_ardour', 'ardour.appdata.xml.in.in')
         Logs.info('Updating ' + potfile)
         try:
             subprocess.call(('itstool', '-i', itsfile, '-o', potfile, adsource))
@@ -1087,25 +919,20 @@ def appdata_i18n_pot(bld):
         os.remove(potfile)
 
 def appdata_i18n_po(bld):
-    autowaf.build_i18n_po(bld, bld.top_dir, os.path.join(
-        'gtk2_ardour', 'appdata'), 'ardour.appdata', 'dummy', 'dummy')
+    autowaf.build_i18n_po(bld, bld.top_dir, os.path.join('gtk2_ardour', 'appdata'), 'ardour.appdata', 'dummy', 'dummy')
 
 def appdata_i18n_mo(bld):
-    autowaf.build_i18n_mo(bld, bld.top_dir, os.path.join(
-        'gtk2_ardour', 'appdata'), 'ardour.appdata', 'dummy', 'dummy')
+    autowaf.build_i18n_mo(bld, bld.top_dir, os.path.join('gtk2_ardour', 'appdata'), 'ardour.appdata', 'dummy', 'dummy')
 
 def appdata_i18n_xmlin(bld):
-    adxmlinfile = os.path.join(bld.top_dir, 'gtk2_ardour',
-            'ardour.appdata.xml.in')
+    adxmlinfile = os.path.join(bld.top_dir, 'gtk2_ardour', 'ardour.appdata.xml.in')
     if bld.cmd == 'build':
         itsfile = os.path.join(bld.top_dir, 'tools', 'as-metainfo.its')
-        adxmlininfile = os.path.join(bld.top_dir, 'gtk2_ardour',
-                'ardour.appdata.xml.in.in')
+        adxmlininfile = os.path.join(bld.top_dir, 'gtk2_ardour', 'ardour.appdata.xml.in.in')
         mo_glob = os.path.join(bld.top_dir, 'gtk2_ardour', 'appdata', 'po', '*.mo')
         mo_files = glob.glob(mo_glob)
         Logs.info('Generating ' + adxmlinfile)
-        subprocess.call(['itstool', '-i', itsfile, '-o', adxmlinfile,
-            '-j', adxmlininfile] + mo_files)
+        subprocess.call(['itstool', '-i', itsfile, '-o', adxmlinfile, '-j', adxmlininfile] + mo_files)
     elif bld.cmd == 'clean' and os.path.exists(adxmlinfile):
         Logs.info('Removing ' + adxmlinfile)
         os.remove(adxmlinfile)
