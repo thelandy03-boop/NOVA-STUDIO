@@ -1,0 +1,4 @@
+module primitives
+NovaPanel 1.0 NovaPanel.qml
+NovaText 1.0 NovaText.qml
+NovaIconButton 1.0 NovaIconButton.qml

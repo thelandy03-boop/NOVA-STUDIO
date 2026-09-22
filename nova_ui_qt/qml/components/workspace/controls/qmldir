@@ -1,0 +1,13 @@
+﻿module components.workspace.controls
+
+ReaperBaseButton 1.0 ReaperBaseButton.qml
+ReaperKnob 1.0 ReaperKnob.qml
+ReaperFader 1.0 ReaperFader.qml
+ReaperMetalThumb 1.0 ReaperMetalThumb.qml
+ReaperTrackRecButton 1.0 ReaperTrackRecButton.qml
+ReaperTransportRecButton 1.0 ReaperTransportRecButton.qml
+ReaperTinyBtn 1.0 ReaperTinyBtn.qml
+ReaperRouteBtn 1.0 ReaperRouteBtn.qml
+ReaperFxBtn 1.0 ReaperFxBtn.qml
+ReaperNodesBtn 1.0 ReaperNodesBtn.qml
+ReaperSpeakerIcon 1.0 ReaperSpeakerIcon.qml
