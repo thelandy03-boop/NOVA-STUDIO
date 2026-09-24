@@ -1,4 +1,4 @@
-﻿#include <QGuiApplication>
+#include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QUrl>
 #include <QDir>
@@ -7,76 +7,120 @@
 #include <QDirIterator>
 #include <QDebug>
 #include <QTimer>
+#include <QWindow>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
+    qputenv("QML_DISABLE_DISK_CACHE", "1");
 
     QGuiApplication app(argc, argv);
+    // Evita que el proceso muera al destruir la Window en un reload
+    app.setQuitOnLastWindowClosed(false);
+
     QQmlApplicationEngine engine;
 
-    // Ruta absoluta a tus archivos de desarrollo QML
-    QString qmlDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../qml");
-    QString mainQml = qmlDir + "/Main.qml";
+    // build/ → ../qml  |  build/Release → ../../qml
+    QStringList candidates;
+    candidates << QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../qml")
+               << QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../qml")
+               << QDir::cleanPath(QDir::currentPath() + "/../qml")
+               << QDir::cleanPath(QDir::currentPath() + "/qml");
 
-    if (QFileInfo::exists(mainQml)) {
-        qDebug() << "🔥 MODO DESARROLLO (Hot Reload Activo) desde:" << qmlDir;
+    QString qmlDir;
+    QString mainQml;
+    for (const QString &c : candidates) {
+        const QString m = c + "/Main.qml";
+        if (QFileInfo::exists(m)) {
+            qmlDir = c;
+            mainQml = m;
+            break;
+        }
+    }
 
+    if (!mainQml.isEmpty()) {
+        qDebug() << "HOT-RELOAD activo desde:" << qmlDir;
+
+        // Imports relativos tipo import "theme" / import "../draft"
         engine.addImportPath(qmlDir);
-        QUrl url = QUrl::fromLocalFile(mainQml);
+        engine.addImportPath(qmlDir + "/skins");
+        engine.addImportPath(qmlDir + "/skins/draft");
+        engine.addImportPath(qmlDir + "/skins/bandlab");
+        engine.addImportPath(qmlDir + "/skins/reaper");
 
-        // 1. Instanciar en el Heap pasando &app para asegurar persistencia
-        auto watcher = new QFileSystemWatcher(&app);
+        const QUrl url = QUrl::fromLocalFile(mainQml);
 
-        // Función para registrar tanto archivos como carpetas (evita el problema del guardado atómico en IDEs)
+        auto *watcher = new QFileSystemWatcher(&app);
+        auto *reloadTimer = new QTimer(&app);
+        reloadTimer->setSingleShot(true);
+        reloadTimer->setInterval(200);
+
         auto addAllPaths = [watcher, qmlDir]() {
-            if (!watcher->files().isEmpty()) watcher->removePaths(watcher->files());
-            if (!watcher->directories().isEmpty()) watcher->removePaths(watcher->directories());
+            const auto files = watcher->files();
+            if (!files.isEmpty())
+                watcher->removePaths(files);
+            const auto dirs = watcher->directories();
+            if (!dirs.isEmpty())
+                watcher->removePaths(dirs);
 
-            watcher->addPath(qmlDir); // Monitorear el directorio principal
-
-            QDirIterator it(qmlDir, QStringList() << "*.qml" << "qmldir", QDir::Files, QDirIterator::Subdirectories);
+            watcher->addPath(qmlDir);
+            QDirIterator it(qmlDir,
+                            QStringList() << "*.qml" << "qmldir",
+                            QDir::Files,
+                            QDirIterator::Subdirectories);
             while (it.hasNext()) {
-                QString path = it.next();
+                const QString path = it.next();
                 watcher->addPath(path);
-                watcher->addPath(QFileInfo(path).absolutePath()); // Añadir subcarpetas
+                watcher->addPath(QFileInfo(path).absolutePath());
             }
         };
 
         addAllPaths();
 
-        // Evitar múltiples disparos consecutivos al guardar (Debounce)
-        auto reloadTimer = new QTimer(&app);
-        reloadTimer->setSingleShot(true);
-        reloadTimer->setInterval(150); // 150 ms de espera tras el guardado
+        auto doReload = [&engine, url, addAllPaths]() {
+            qDebug() << "HOT-RELOAD ejecutando...";
 
-        auto triggerReload = [&engine, url, addAllPaths, reloadTimer](const QString &path) {
-            qDebug() << "⚡ Modificación detectada en:" << path;
-            
-            // Reiniciar timer
-            reloadTimer->disconnect();
-            QObject::connect(reloadTimer, &QTimer::timeout, [&engine, url, addAllPaths]() {
-                qDebug() << "🔄 Ejecutando Hot Reload...";
-                engine.clearComponentCache();
+            const auto roots = engine.rootObjects();
+            for (QObject *obj : roots) {
+                if (auto *w = qobject_cast<QWindow *>(obj))
+                    w->hide();
+                obj->deleteLater();
+            }
 
-                for (auto obj : engine.rootObjects()) {
-                    delete obj;
-                }
+            engine.clearComponentCache();
+            addAllPaths();
 
-                addAllPaths(); // Volver a vincular los observadores de archivos
+            // Deja que deleteLater corra antes de cargar de nuevo
+            QTimer::singleShot(0, &engine, [&engine, url]() {
                 engine.load(url);
+                if (engine.rootObjects().isEmpty())
+                    qCritical() << "HOT-RELOAD: fallo al recargar Main.qml";
+                else
+                    qDebug() << "HOT-RELOAD OK";
             });
+        };
 
+        QObject::connect(reloadTimer, &QTimer::timeout, &app, doReload);
+
+        auto scheduleReload = [reloadTimer](const QString &path) {
+            qDebug() << "QML cambio:" << path;
             reloadTimer->start();
         };
 
-        // Escuchar tanto cambios en archivos como en directorios
-        QObject::connect(watcher, &QFileSystemWatcher::fileChanged, triggerReload);
-        QObject::connect(watcher, &QFileSystemWatcher::directoryChanged, triggerReload);
+        QObject::connect(watcher, &QFileSystemWatcher::fileChanged, &app, scheduleReload);
+        QObject::connect(watcher, &QFileSystemWatcher::directoryChanged, &app, scheduleReload);
 
         engine.load(url);
+        if (engine.rootObjects().isEmpty()) {
+            qCritical() << "No se pudo cargar" << mainQml;
+            return -1;
+        }
     } else {
-        engine.addImportPath("qrc:/qt/qml/NovaStudio");
+        qDebug() << "Modo QRC (sin hot-reload de fuentes)";
+        engine.addImportPath(QStringLiteral("qrc:/qt/qml/NovaStudio"));
         engine.load(QUrl(QStringLiteral("qrc:/qt/qml/NovaStudio/qml/Main.qml")));
+        if (engine.rootObjects().isEmpty())
+            return -1;
     }
 
     return app.exec();

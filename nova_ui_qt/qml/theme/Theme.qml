@@ -96,4 +96,9 @@ QtObject {
     readonly property int stripCenterX:    36
     readonly property int faderHeight:     120
     readonly property int transportHeight: 44
+
+    // ──────────────────────────────────────────────
+    // 8. CONTROL DE SKIN DINÁMICO
+    // ──────────────────────────────────────────────
+    property string activeSkin: "draft"
 }

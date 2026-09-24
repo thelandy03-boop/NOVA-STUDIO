@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import "theme"
@@ -18,9 +18,9 @@ Window {
         initialItem: homeComponent
 
         pushEnter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 250 } }
-        pushExit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 250 } }
-        popEnter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 250 } }
-        popExit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 250 } }
+        pushExit:  Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 250 } }
+        popEnter:  Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 250 } }
+        popExit:   Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 250 } }
     }
 
     Component {
@@ -34,6 +34,32 @@ Window {
         id: workspaceComponent
         WorkspaceScreen {
             onGoBack: rootStack.pop()
+        }
+    }
+
+    // Skins en caliente
+    Shortcut {
+        sequence: "F1"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            Theme.activeSkin = "draft"
+            console.log("[SKIN ENGINE] Draft (esqueleto)")
+        }
+    }
+    Shortcut {
+        sequence: "F2"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            Theme.activeSkin = "reaper"
+            console.log("[SKIN ENGINE] Reaper")
+        }
+    }
+    Shortcut {
+        sequence: "F3"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            Theme.activeSkin = "bandlab"
+            console.log("[SKIN ENGINE] BandLab (rack modular)")
         }
     }
 }
