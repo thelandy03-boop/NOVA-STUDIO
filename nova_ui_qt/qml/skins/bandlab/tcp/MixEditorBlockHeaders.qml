@@ -7,8 +7,6 @@ Item {
 
     property real tracksTop: 0
     property real timelineLeft: 0
-    property bool showPlaceholder: true
-
     signal autoMixClicked()
 
     implicitHeight: col.implicitHeight
@@ -17,12 +15,6 @@ Item {
         id: col
         width: parent.width
         spacing: 0
-
-        // Placeholder Skeleton SVG
-        TrackHeaderPlaceholder {
-            visible: root.showPlaceholder
-            width: parent.width
-        }
 
         // AutoMix Button
         AutoMixButton {

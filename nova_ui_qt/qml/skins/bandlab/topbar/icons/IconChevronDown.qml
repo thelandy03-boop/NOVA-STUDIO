@@ -1,23 +1,23 @@
 import QtQuick
-import QtQuick.Shapes
 
 Item {
     id: root
-    width: 7
-    height: 5
+
+    implicitWidth: 16
+    implicitHeight: 16
+    width: implicitWidth
+    height: implicitHeight
+
     property color color: "#A0A5B5"
+    property alias iconColor: root.color
 
-    Shape {
-        anchors.fill: parent
-        preferredRendererType: Shape.CurveRenderer
-
-        ShapePath {
-            fillColor: "transparent"
-            strokeColor: root.color
-            strokeWidth: 1.3
-            capStyle: ShapePath.RoundCap
-            joinStyle: ShapePath.RoundJoin
-            PathSvg { path: "M 1 1 L 3.5 3.5 L 6 1" }
-        }
+    Image {
+        anchors.centerIn: parent
+        width: root.width
+        height: root.height
+        source: Qt.resolvedUrl("svg/IconChevronDown.svg")
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        antialiasing: true
     }
 }

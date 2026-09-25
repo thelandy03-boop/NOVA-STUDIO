@@ -62,4 +62,12 @@ Window {
             console.log("[SKIN ENGINE] BandLab (rack modular)")
         }
     }
+    Shortcut {
+        sequence: "F4"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            Theme.activeSkin = "logic"
+            console.log("[SKIN ENGINE] Logic (DAW Studio)")
+        }
+    }
 }

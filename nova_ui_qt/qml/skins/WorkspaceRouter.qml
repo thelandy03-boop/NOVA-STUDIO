@@ -13,6 +13,9 @@ Loader {
             return Qt.resolvedUrl("bandlab/BandLabWorkspace.qml")
         default:
             return Qt.resolvedUrl("draft/DraftWorkspace.qml")
+
+            case "logic":
+    return Qt.resolvedUrl("logic/LogicWorkspace.qml")
         }
     }
 }

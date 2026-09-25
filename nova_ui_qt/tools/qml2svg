@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Export static PathSvg data from a QML icon into a centered SVG."""
+
+import os
+import re
+import sys
+import tempfile
+
+
+def find_file_recursively(filename, start_dir="."):
+    """Find a QML file while skipping generated and dependency directories."""
+    if os.path.isfile(filename):
+        return filename
+
+    ignored_dirs = {"build", ".git", "bin", "node_modules", ".cache"}
+    for root, dirs, files in os.walk(start_dir):
+        dirs[:] = [directory for directory in dirs if directory not in ignored_dirs]
+        if filename in files:
+            return os.path.join(root, filename)
+    return None
+
+
+def extract_paths_from_qml(qml_content):
+    """Return each literal PathSvg.path independently, preserving subpaths."""
+    paths = re.findall(r'\bpath\s*:\s*["\']([^"\']+)["\']', qml_content, re.DOTALL)
+    if not paths:
+        paths = re.findall(r'\bd\s*=\s*["\']([^"\']+)["\']', qml_content, re.DOTALL)
+    return [" ".join(path.split()) for path in paths]
+
+
+def extract_base_size(qml_content):
+    """Get the source Shape size, falling back to the common 24px icon grid."""
+    shape = re.search(r"\bShape\s*\{(.*?)(?=\bShapePath\s*\{|\Z)", qml_content, re.DOTALL)
+    if shape:
+        width = re.search(r"\bwidth\s*:\s*(\d+(?:\.\d+)?)", shape.group(1))
+        height = re.search(r"\bheight\s*:\s*(\d+(?:\.\d+)?)", shape.group(1))
+        if width and height:
+            return float(width.group(1)), float(height.group(1))
+        if width:
+            size = float(width.group(1))
+            return size, size
+    return 24.0, 24.0
+
+
+def svg_renderer_types():
+    """Load QtSvg from either supported Python Qt binding."""
+    try:
+        from PySide6.QtCore import QByteArray
+        from PySide6.QtSvg import QSvgRenderer
+        return QByteArray, QSvgRenderer
+    except ImportError:
+        try:
+            from PyQt6.QtCore import QByteArray
+            from PyQt6.QtSvg import QSvgRenderer
+            return QByteArray, QSvgRenderer
+        except ImportError as error:
+            raise RuntimeError(
+                "Para centrar los iconos con sus límites reales instala QtSvg para Python "
+                "(PySide6.QtSvg o PyQt6.QtSvg)."
+            ) from error
+
+
+def svg_markup(paths, width, height, view_box=None):
+    if view_box is None:
+        view_box = (0.0, 0.0, width, height)
+    x, y, view_width, view_height = view_box
+    path_markup = "\n".join(
+        f'  <path id="icon-{index}" fill="#A0A5B5" fill-rule="evenodd" d="{path}"/>'
+        for index, path in enumerate(paths)
+    )
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" '
+        f'width="{width:g}" height="{height:g}" '
+        f'viewBox="{x:.6f} {y:.6f} {view_width:g} {view_height:g}">\n'
+        f'{path_markup}\n'
+        '</svg>'
+    )
+
+
+def content_bounds(paths, width, height):
+    """Measure actual vector path bounds via QtSvg, without raster-size guesses."""
+    QByteArray, QSvgRenderer = svg_renderer_types()
+    renderer = QSvgRenderer(QByteArray(svg_markup(paths, width, height).encode("utf-8")))
+    if not renderer.isValid():
+        raise RuntimeError("QtSvg no pudo interpretar los PathSvg de este QML.")
+
+    bounds = None
+    for index in range(len(paths)):
+        element_bounds = renderer.boundsOnElement(f"icon-{index}")
+        if element_bounds.isEmpty():
+            continue
+        bounds = element_bounds if bounds is None else bounds.united(element_bounds)
+
+    if bounds is None:
+        raise RuntimeError("Los trazados no tienen límites medibles.")
+    return bounds
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Uso: ./tools/qml2svg <NombreDelIcono.qml>")
+        return 1
+
+    target_arg = sys.argv[1]
+    if not target_arg.endswith(".qml"):
+        target_arg += ".qml"
+
+    filename_only = os.path.basename(target_arg)
+    found_path = find_file_recursively(target_arg)
+    if not found_path:
+        found_path = find_file_recursively(filename_only)
+    if not found_path:
+        print(f"Error: no se encontró '{filename_only}' en el proyecto.")
+        return 1
+
+    with open(found_path, "r", encoding="utf-8") as source_file:
+        qml_content = source_file.read()
+
+    paths = extract_paths_from_qml(qml_content)
+    if not paths:
+        print(f"Error: no se encontró un PathSvg.path literal en '{found_path}'.")
+        return 1
+
+    width, height = extract_base_size(qml_content)
+    try:
+        bounds = content_bounds(paths, width, height)
+    except RuntimeError as error:
+        print(f"Error: {error}")
+        return 1
+
+    # Keep the original icon scale; move only the viewBox so the painted bounds
+    # are centered. This works for paths with curves and relative coordinates.
+    view_x = bounds.center().x() - width / 2
+    view_y = bounds.center().y() - height / 2
+    output_svg = svg_markup(paths, width, height, (view_x, view_y, width, height))
+
+    output_dir = os.path.join(os.path.dirname(found_path), "svg")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{os.path.splitext(filename_only)[0]}.svg")
+
+    # Write atomically so a failed run never leaves a truncated icon behind.
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=output_dir, suffix=".svg", delete=False
+        ) as output_file:
+            temporary_path = output_file.name
+            output_file.write(output_svg)
+        os.replace(temporary_path, output_path)
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
+    offset_x = bounds.center().x() - width / 2
+    offset_y = bounds.center().y() - height / 2
+    print("SVG generado y centrado por límites vectoriales.")
+    print(f"QML: {os.path.abspath(found_path)}")
+    print(f"SVG: {os.path.abspath(output_path)}")
+    print(f"Corrección del viewBox: x={offset_x:.3f}, y={offset_y:.3f}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,30 +1,23 @@
 import QtQuick
-import QtQuick.Shapes
 
 Item {
     id: root
 
-    property color iconColor: "#8F94A0"
-
     implicitWidth: 16
     implicitHeight: 16
+    width: implicitWidth
+    height: implicitHeight
 
-    Shape {
+    property color color: "#A0A5B5"
+    property alias iconColor: root.color
+
+    Image {
         anchors.centerIn: parent
-        width: 24
-        height: 24
-        scale: root.width / 24.0
-        transformOrigin: Item.Center
-        preferredRendererType: Shape.CurveRenderer
-
-        ShapePath {
-            fillColor: root.iconColor
-            strokeColor: "transparent"
-            strokeWidth: 0
-
-            PathSvg {
-                path: "M15.7 2.3 22.42 9l-6.7 6.7-1.42-1.4 4.3-4.3H10c-4.12 0-6 2.59-6.03 5a4.6 4.6 0 0 0 1.42 3.4c.96.92 2.46 1.6 4.61 1.6v2c-2.59 0-4.61-.82-6-2.15a6.6 6.6 0 0 1-2.03-4.86C2 11.41 4.85 8 10 8h8.59l-4.3-4.3z"
-            }
-        }
+        width: root.width
+        height: root.height
+        source: Qt.resolvedUrl("svg/IconRedo.svg")
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        antialiasing: true
     }
 }

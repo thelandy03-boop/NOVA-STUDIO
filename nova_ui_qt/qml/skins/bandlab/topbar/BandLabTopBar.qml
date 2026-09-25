@@ -15,11 +15,26 @@ Rectangle {
     signal homeClicked()
     signal undoClicked()
     signal redoClicked()
+    signal saveClicked()
+    signal publishClicked()
 
     property bool canUndo: false
     property bool canRedo: false
     property string projectName: "Nuevo proyecto"
     property string lastSavedText: "Nunca"
+
+    // Modal Flotante de Invitar Colaboradores
+    InviteCollaboratorsModal {
+        id: inviteModal
+    }
+
+    // Sub-menú Desplegable Flotante
+    BandLabMenuPopup {
+        id: mainMenuPopup
+        x: menuBtn.x
+        y: menuBtn.y + menuBtn.height + 6
+        onInviteCollaboratorsClicked: inviteModal.open()
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -44,11 +59,14 @@ Rectangle {
                     spacing: 10
                     Layout.alignment: Qt.AlignVCenter
 
-                    Text {
-                        text: "☰"
-                        color: "#A0A5B5"
-                        font.pixelSize: 16
+                    Rectangle {
+                        id: menuBtn
+                        width: 28; height: 28; radius: 6
+                        color: menuArea.containsMouse ? "#1A1C28" : "transparent"
                         anchors.verticalCenter: parent.verticalCenter
+
+                        IconMenu { anchors.centerIn: parent; color: menuArea.containsMouse ? "#FFFFFF" : "#A0A5B5" }
+                        MouseArea { id: menuArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: mainMenuPopup.open() }
                     }
 
                     Row {
@@ -71,46 +89,23 @@ Rectangle {
                         Text { text: "BandLab"; color: "#FFFFFF"; font.pixelSize: 14; font.bold: true }
                     }
 
-                    // Botón "Obtener 👑"
                     Rectangle {
-                        implicitWidth: obtRow.implicitWidth + 20
-                        height: 26; radius: 13
-                        color: "#FFA800"
+                        implicitWidth: obtRow.implicitWidth + 20; height: 26; radius: 13; color: "#FFA800"
                         anchors.verticalCenter: parent.verticalCenter
-
                         Row {
-                            id: obtRow
-                            anchors.centerIn: parent
-                            spacing: 5
+                            id: obtRow; anchors.centerIn: parent; spacing: 5
                             Text { text: "Obtener"; color: "#000000"; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
-                            
-                            Shape {
-                                width: 12; height: 10
-                                anchors.verticalCenter: parent.verticalCenter
-                                ShapePath {
-                                    fillColor: "#000000"
-                                    strokeWidth: 0
-                                    PathSvg { path: "M0 10h12l-1-8-2.5 3L6 0 3.5 5 1 2z" }
-                                }
-                            }
+                            Shape { width: 12; height: 10; anchors.verticalCenter: parent.verticalCenter; ShapePath { fillColor: "#000000"; strokeWidth: 0; PathSvg { path: "M0 10h12l-1-8-2.5 3L6 0 3.5 5 1 2z" } } }
                         }
                     }
                 }
 
                 Item { Layout.fillWidth: true }
 
-                // --- CENTRO: Título ---
-                Text {
-                    text: root.projectName
-                    color: "#FFFFFF"
-                    font.pixelSize: 13
-                    font.bold: true
-                    Layout.alignment: Qt.AlignCenter
-                }
+                Text { text: root.projectName; color: "#FFFFFF"; font.pixelSize: 13; font.bold: true; Layout.alignment: Qt.AlignCenter }
 
                 Item { Layout.fillWidth: true }
 
-                // --- DERECHA ---
                 Row {
                     spacing: 8
                     Layout.alignment: Qt.AlignVCenter
@@ -121,8 +116,8 @@ Rectangle {
                         Text { text: root.lastSavedText; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true; horizontalAlignment: Text.AlignRight; anchors.right: parent.right }
                     }
 
-                    TopPillButton { text: "Guardar"; iconSymbol: "☁" }
-                    TopPillButton { text: "Publicar"; iconSymbol: "🌐"; isDisabled: true }
+                    SaveButton { onClicked: root.saveClicked() }
+                    PublishButton { isDisabled: true; onClicked: root.publishClicked() }
                 }
             }
         }
@@ -143,113 +138,46 @@ Rectangle {
                 anchors.rightMargin: 12
                 spacing: 8
 
-                // 1. CÁPSULA DESHACER / REHACER
-                UndoRedoGroup {
-                    canUndo: root.canUndo
-                    canRedo: root.canRedo
-                    onUndoClicked: root.undoClicked()
-                    onRedoClicked: root.redoClicked()
-                }
+                UndoRedoGroup { canUndo: root.canUndo; canRedo: root.canRedo; onUndoClicked: root.undoClicked(); onRedoClicked: root.redoClicked() }
 
-                // 2. Teclado Virtual 🎹
                 Rectangle {
-                    width: 32; height: 28; radius: 14
-                    color: "#141620"
-                    border.color: "#222534"
-                    border.width: 1
-                    
-                    IconKeyboard {
-                        anchors.centerIn: parent
-                        color: "#6E7280"
-                    }
+                    width: 32; height: 28; radius: 14; color: "#141620"; border.color: "#222534"; border.width: 1
+                    IconKeyboard { anchors.centerIn: parent; color: "#6E7280" }
                 }
 
-                // 3. Tempo & Compás (Invocación Modular)
-                TempoControlGroup {
-                    bpm: 120
-                    numerator: 4
-                    denominator: 4
-                }
+                TempoControlGroup { bpm: 120; numerator: 4; denominator: 4 }
 
-                // 4. Clave
                 Rectangle {
-                    implicitWidth: 64; height: 28; radius: 14
-                    color: "#141620"
-                    border.color: "#222534"
-                    border.width: 1
+                    implicitWidth: 64; height: 28; radius: 14; color: "#141620"; border.color: "#222534"; border.width: 1
                     Text { anchors.centerIn: parent; text: "Clave"; color: "#A0A5B5"; font.pixelSize: 11 }
                 }
 
                 Item { Layout.fillWidth: true }
 
-                // 5. Transporte (Invocación Modular)
-                TransportControlGroup {
-                    timeText: "00:00.0"
-                }
+                TransportControlGroup { timeText: "00:00.0" }
 
                 Item { Layout.fillWidth: true }
 
-                // 6. Masterizando (Invocación Modular)
-                MasterizingControlGroup {
-                    label: "Masterizando"
-                }
+                MasterizingControlGroup { label: "Masterizando" }
 
-                // 7. Volumen Maestro (Invocación Modular)
-                MasterVolumeControlGroup {
-                    volume: 0.7071
-                }
+                MasterVolumeControlGroup { volume: 0.7071 }
 
-                // 8. Invitar & Campana 🔔³
                 Row {
                     spacing: 6
                     Layout.alignment: Qt.AlignVCenter
 
+                    // Botón "Invitar" (También abre el modal de colaboradores)
                     Rectangle {
                         implicitWidth: invRow.implicitWidth + 20; height: 28; radius: 14
-                        color: "#181A24"; border.color: "#282B3C"; border.width: 1
+                        color: invArea.containsMouse ? "#222534" : "#181A24"
+                        border.color: "#282B3C"; border.width: 1
                         Row { id: invRow; anchors.centerIn: parent; Text { text: "Invitar"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true } }
+                        MouseArea { id: invArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: inviteModal.open() }
                     }
 
-                    Rectangle {
-                        width: 28; height: 28; radius: 14
-                        color: "#181A24"; border.color: "#282B3C"; border.width: 1
-
-                        IconBell {
-                            anchors.centerIn: parent
-                            color: "#FFFFFF"
-                        }
-
-                        Rectangle {
-                            width: 13; height: 13; radius: 6.5
-                            color: "#E53935"
-                            x: 15; y: -2
-                            Text { anchors.centerIn: parent; text: "3"; color: "#FFFFFF"; font.pixelSize: 8; font.bold: true }
-                        }
-                    }
+                    NotificationBellButton { badgeCount: 3 }
                 }
             }
-        }
-    }
-
-    component TopPillButton: Rectangle {
-        property string text: ""
-        property string iconSymbol: ""
-        property bool isDisabled: false
-
-        implicitWidth: pRow.implicitWidth + 20
-        height: 28
-        radius: 14
-        color: isDisabled ? "#12131A" : "#181A24"
-        border.color: isDisabled ? "#1E202B" : "#282B3C"
-        border.width: 1
-        opacity: isDisabled ? 0.5 : 1.0
-
-        Row {
-            id: pRow
-            anchors.centerIn: parent
-            spacing: 6
-            Text { text: iconSymbol; color: isDisabled ? "#8F94A0" : "#FFFFFF"; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
-            Text { text: parent.parent.text; color: isDisabled ? "#8F94A0" : "#FFFFFF"; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
         }
     }
 }

@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
 
             watcher->addPath(qmlDir);
             QDirIterator it(qmlDir,
-                            QStringList() << "*.qml" << "qmldir",
+                            QStringList() << "*.qml" << "qmldir" << "*.svg",
                             QDir::Files,
                             QDirIterator::Subdirectories);
             while (it.hasNext()) {

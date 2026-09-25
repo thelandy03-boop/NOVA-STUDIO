@@ -25,6 +25,13 @@ qt_add_qml_module(nova_ui_qt
     VERSION 1.0
     QML_FILES
         ${NOVA_QML_FILES}
+    RESOURCES
+        qml/skins/bandlab/topbar/icons/svg/IconLoop.svg
+        qml/skins/bandlab/topbar/icons/svg/IconLoopActive.svg
+        qml/skins/logic/topbar/icons/svg/LogicIconChevron.svg
+        qml/skins/logic/topbar/icons/svg/LogicIconPencil.svg
+        qml/skins/logic/topbar/icons/svg/LogicIconPointer.svg
+        qml/skins/logic/topbar/icons/svg/LogicIconScissors.svg
 )
 
 target_include_directories(nova_ui_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qml)
