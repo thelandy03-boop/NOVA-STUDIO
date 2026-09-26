@@ -10,6 +10,8 @@ Rectangle {
     property real sampleRate: 44100.0     // Frecuencia de muestreo
     property real currentPlayheadX: 0     // Inicia en el Compás 1 (x = 0)
 
+    property alias scrollY: gridFlickable.contentY
+
     // CONEXIÓN DIRECTA CON C++ PARA SINCRO CON GRID Y REGLA
     Connections {
         target: typeof AudioEngine !== "undefined" ? AudioEngine : null
@@ -18,7 +20,6 @@ Rectangle {
             var bpm = AudioEngine.bpm > 0 ? AudioEngine.bpm : 120.0;
             var currentSeconds = AudioEngine.currentFrame / root.sampleRate;
             
-            // Convertir segundos -> beats -> píxeles del grid
             var currentBeats = currentSeconds * (bpm / 60.0);
             var pixelsPerBeat = root.barWidth / 4.0; // 4/4
             
@@ -46,14 +47,13 @@ Rectangle {
             Flickable {
                 id: gridFlickable
                 anchors.fill: parent
-                contentWidth: 4800
-                contentHeight: 960
+                contentWidth: timelineGrid.width
+                contentHeight: timelineGrid.height
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.HorizontalAndVerticalFlick
 
                 LogicTimelineGrid {
-                    width: 4800
-                    height: 960
+                    id: timelineGrid
                 }
 
                 MouseArea {

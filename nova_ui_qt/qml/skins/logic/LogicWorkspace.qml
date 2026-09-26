@@ -32,14 +32,28 @@ Rectangle {
 
             // ZONA 2: TCP PANEL (260px)
             LogicTcpPanel {
+                id: tcpPanel
                 Layout.preferredWidth: 260
                 Layout.fillHeight: true
             }
 
             // ZONA 3: TIMELINE / ARRANGER
             LogicTimelinePanel {
+                id: timelinePanel
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+
+                // 🔄 SINCRONIZACIÓN DE SCROLL VERTICAL PERFECTA
+                Binding {
+                    target: tcpPanel
+                    property: "scrollY"
+                    value: timelinePanel.scrollY
+                }
+                Binding {
+                    target: timelinePanel
+                    property: "scrollY"
+                    value: tcpPanel.scrollY
+                }
             }
         }
 
@@ -57,7 +71,7 @@ Rectangle {
                 anchors.rightMargin: 12
 
                 Text {
-                    text: "Sample Rate: 48 kHz / 24-bit"
+                    text: "Sample Rate: 44.1 kHz / 24-bit"
                     color: "#8F94A0"
                     font.pixelSize: 11
                 }
@@ -65,7 +79,7 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 Text {
-                    text: "BPM: 120.00  |  Snap: 1/16"
+                    text: "BPM: " + (typeof AudioEngine !== "undefined" ? AudioEngine.bpm.toFixed(2) : "120.00") + "  |  Snap: 1/16"
                     color: "#8F94A0"
                     font.pixelSize: 11
                 }
@@ -73,9 +87,7 @@ Rectangle {
         }
     }
 
-    // ============================================================
-    // DIÁLOGO MODAL DE COLABORADORES (Perteneciente al skin Logic)
-    // ============================================================
+    // DIÁLOGO MODAL DE COLABORADORES
     InviteCollaboratorsDialog {
         id: inviteCollaboratorsDialog
         anchors.fill: parent

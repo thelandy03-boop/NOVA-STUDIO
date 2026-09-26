@@ -7,6 +7,8 @@ Rectangle {
     implicitWidth: 260
     color: "#282A2E"
 
+    property alias scrollY: flickable.contentY
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -24,6 +26,7 @@ Rectangle {
             contentWidth: flickable.width
             contentHeight: trackList.height
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
 
             Column {
                 id: trackList
