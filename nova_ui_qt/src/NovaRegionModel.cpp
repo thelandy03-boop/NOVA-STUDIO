@@ -101,7 +101,6 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
         return false;
     }
 
-    // Limpiar prefijo file:// si viene desde QML FileDialog
     QString cleanPath = filePath;
     if (cleanPath.startsWith("file://")) {
         cleanPath = cleanPath.mid(7);
@@ -119,7 +118,6 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
         return false;
     }
 
-    // Buscar la pista por su índice ordenado
     int currentIdx = 0;
     std::shared_ptr<ARDOUR::Track> targetTrack = nullptr;
 
@@ -141,7 +139,6 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
     qDebug() << "🎵 [NovaRegion] Importando archivo de audio:" << cleanPath << "en pista index:" << trackIndex;
 
     try {
-        // 1. Crear el Source externo desde el archivo de audio
         std::shared_ptr<ARDOUR::Source> source = ARDOUR::SourceFactory::createExternal(
             ARDOUR::DataType::AUDIO,
             *m_session,
@@ -155,7 +152,6 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
             return false;
         }
 
-        // 2. Construir las propiedades requeridas por Ardour para instanciar la región
         PBD::PropertyList plist;
         plist.add(ARDOUR::Properties::start, Temporal::timepos_t(0));
         plist.add(ARDOUR::Properties::length, source->length());
@@ -168,20 +164,17 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
         ARDOUR::SourceList sources;
         sources.push_back(source);
 
-        // 3. Crear la región a través de RegionFactory
         std::shared_ptr<ARDOUR::Region> region = ARDOUR::RegionFactory::create(sources, plist);
         if (!region) {
             qWarning() << "❌ [NovaRegion] RegionFactory no pudo generar la región de audio.";
             return false;
         }
 
-        // 4. Calcular la posición en muestras según el startBeat
         double bpm = 120.0;
         double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
         double secondsPerBeat = 60.0 / bpm;
         ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(startBeat * secondsPerBeat * sampleRate);
 
-        // 5. Insertar la región en la Playlist de la pista
         auto playlist = targetTrack->playlist();
         if (playlist) {
             playlist->add_region(region, Temporal::timepos_t(startSample));
@@ -197,6 +190,55 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
     }
 
     return false;
+}
+
+bool NovaRegionModel::moveRegion(int regionIndex, double newStartBeat)
+{
+    if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return false;
+
+    auto &item = m_regions[static_cast<size_t>(regionIndex)];
+    if (!item.regionPtr) return false;
+
+    double bpm = 120.0;
+    double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 44100.0;
+    double secondsPerBeat = 60.0 / bpm;
+    ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(newStartBeat * secondsPerBeat * sampleRate);
+
+    // Actualizar posición en Ardour Core
+    item.regionPtr->set_position(Temporal::timepos_t(startSample));
+
+    item.startBeat = newStartBeat;
+    item.startFrame = static_cast<double>(startSample);
+
+    Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {StartBeatRole, StartFrameRole});
+    qDebug() << "🧲 [NovaRegion] Región movida al beat:" << newStartBeat << "(Sample:" << startSample << ")";
+    return true;
+}
+
+bool NovaRegionModel::resizeRegion(int regionIndex, double newStartBeat, double newLengthBeats)
+{
+    if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return false;
+
+    auto &item = m_regions[static_cast<size_t>(regionIndex)];
+    if (!item.regionPtr) return false;
+
+    double bpm = 120.0;
+    double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 44100.0;
+    double secondsPerBeat = 60.0 / bpm;
+    ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(newStartBeat * secondsPerBeat * sampleRate);
+    ARDOUR::samplecnt_t lengthSamples = static_cast<ARDOUR::samplecnt_t>(newLengthBeats * secondsPerBeat * sampleRate);
+
+    item.regionPtr->set_position(Temporal::timepos_t(startSample));
+    item.regionPtr->set_length(Temporal::timecnt_t(lengthSamples));
+
+    item.startBeat = newStartBeat;
+    item.lengthBeats = newLengthBeats;
+    item.startFrame = static_cast<double>(startSample);
+    item.lengthFrames = static_cast<double>(lengthSamples);
+
+    Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {StartBeatRole, LengthBeatsRole, StartFrameRole, LengthFramesRole});
+    qDebug() << "✂️ [NovaRegion] Región recortada. Beat Inicio:" << newStartBeat << "Duración Beats:" << newLengthBeats;
+    return true;
 }
 
 void NovaRegionModel::removeRegion(int regionIndex)
@@ -242,11 +284,11 @@ void NovaRegionModel::rebuildRegionCache()
                     item.id = QString::fromStdString(reg->id().to_s());
                     item.trackIndex = trackIdx;
                     item.name = QString::fromStdString(reg->name());
+                    item.regionPtr = reg; // Guardar referencia al objeto C++
                     
                     item.startFrame = static_cast<double>(reg->position_sample());
                     item.lengthFrames = static_cast<double>(reg->length_samples());
 
-                    // Conversión a compases y beats musicales
                     double startSeconds = item.startFrame / sampleRate;
                     double lengthSeconds = item.lengthFrames / sampleRate;
 

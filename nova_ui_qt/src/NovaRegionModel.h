@@ -40,6 +40,7 @@ struct NovaRegionItem {
     double startBeat;
     double lengthBeats;
     QString color;
+    std::shared_ptr<ARDOUR::Region> regionPtr; // Puntero nativo al objeto Ardour
 };
 
 class NovaRegionModel : public QAbstractListModel
@@ -69,8 +70,10 @@ public:
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // API pública invocable desde QML
+    // API pública invocable desde QML (Fase 5)
     Q_INVOKABLE bool importAudioFile(int trackIndex, const QString &filePath, double startBeat = 0.0);
+    Q_INVOKABLE bool moveRegion(int regionIndex, double newStartBeat);
+    Q_INVOKABLE bool resizeRegion(int regionIndex, double newStartBeat, double newLengthBeats);
     Q_INVOKABLE void removeRegion(int regionIndex);
     Q_INVOKABLE void rebuildRegionCache();
 
