@@ -47,7 +47,9 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                console.log("➕ Add Track presionado")
+                var nextIndex = AudioEngine.tracks.rowCount() + 1;
+                AudioEngine.tracks.addAudioTrack("Audio " + nextIndex);
+                console.log("➕ [GUI] Solicitada creación de pista: Audio " + nextIndex);
             }
         }
     }

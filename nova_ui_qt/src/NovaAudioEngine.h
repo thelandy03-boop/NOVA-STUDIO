@@ -5,6 +5,7 @@
 #include <QString>
 #include <QTimer>
 #include <QDebug>
+#include "NovaTrackListModel.h"
 
 namespace ARDOUR {
     class AudioEngine;
@@ -20,6 +21,7 @@ class NovaAudioEngine : public QObject
     Q_PROPERTY(QString bbt READ bbt NOTIFY bbtChanged)
     Q_PROPERTY(double currentFrame READ currentFrame NOTIFY positionChanged)
     Q_PROPERTY(double bpm READ bpm WRITE setBpm NOTIFY bpmChanged)
+    Q_PROPERTY(NovaTrackListModel* tracks READ tracks NOTIFY tracksChanged)
 
 public:
     explicit NovaAudioEngine(QObject *parent = nullptr);
@@ -40,6 +42,7 @@ public:
     QString bbt() const { return m_bbt; }
     double currentFrame() const { return m_currentFrame; }
     double bpm() const { return m_bpm; }
+    NovaTrackListModel* tracks() const { return m_trackModel; }
 
 signals:
     void isPlayingChanged();
@@ -48,6 +51,7 @@ signals:
     void bbtChanged();
     void positionChanged();
     void bpmChanged();
+    void tracksChanged();
 
 private slots:
     void updatePositionFromArdour();
@@ -64,6 +68,7 @@ private:
 
     ARDOUR::AudioEngine *m_engine = nullptr;
     ARDOUR::Session *m_session = nullptr;
+    NovaTrackListModel *m_trackModel = nullptr;
 };
 
 #endif // NOVAAUDIOENGINE_H

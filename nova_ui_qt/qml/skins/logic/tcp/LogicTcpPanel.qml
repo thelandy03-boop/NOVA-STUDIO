@@ -5,7 +5,7 @@ import "components"
 Rectangle {
     id: root
     implicitWidth: 260
-    color: "#282A2E" // Fondo oscuro para contrastar con las tarjetas grises
+    color: "#282A2E"
 
     ColumnLayout {
         anchors.fill: parent
@@ -16,24 +16,27 @@ Rectangle {
             Layout.fillWidth: true
         }
 
-        // 2. Lista de Pistas (Estilo REAPER)
+        // 2. Lista de Pistas Dinámica (Sincronizada con Ardour Core)
         Flickable {
+            id: flickable
             Layout.fillWidth: true
             Layout.fillHeight: true
+            contentWidth: flickable.width
             contentHeight: trackList.height
             clip: true
 
             Column {
                 id: trackList
-                width: parent.width
-                spacing: 0 // Sin espacio, pegadas una con otra como en REAPER
+                width: flickable.width
+                spacing: 0
 
-                LogicTrackCard { trackNum: "1"; trackName: "MUSIC_Full" }
-                LogicTrackCard { trackNum: "2"; trackName: "Synth Lead A" }
-                LogicTrackCard { trackNum: "3"; trackName: "Kick" }
-                LogicTrackCard { trackNum: "4"; trackName: "Snare" }
-                LogicTrackCard { trackNum: "5"; trackName: "VOCALS" }
-                LogicTrackCard { trackNum: "6"; trackName: "Bass" }
+                Repeater {
+                    model: AudioEngine.tracks
+                    delegate: LogicTrackCard {
+                        width: trackList.width
+                        height: 74
+                    }
+                }
             }
         }
     }

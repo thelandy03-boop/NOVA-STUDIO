@@ -43,6 +43,8 @@ qt_add_executable(nova_ui_qt
     main.cpp
     src/NovaAudioEngine.h
     src/NovaAudioEngine.cpp
+    src/NovaTrackListModel.h       # 🎛️ NUEVO
+    src/NovaTrackListModel.cpp     # 🎛️ NUEVO
 )
 
 nova_mark_singletons()
@@ -103,7 +105,7 @@ endif()
 if(FST_LIB)
     list(APPEND EXTRA_ARDOUR_LIBS "${FST_LIB}")
 elseif(EXISTS "${ARDOUR_BUILD_DIR}/libs/fst/libfst.so")
-    list(APPEND EXTRA_ARDOUR_LIBS "${ARDOUR_BUILD_DIR}/libs/fst/libfst.so")
+    list(APPEND EXTRA_ARDOUR_LIBS "${FST_LIB}")
 endif()
 
 target_link_libraries(nova_ui_qt PRIVATE
