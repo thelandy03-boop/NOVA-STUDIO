@@ -3,10 +3,12 @@ import QtQuick
 Rectangle {
     id: root
     width: parent ? parent.width : 4800
-    height: 74 // Coincidencia exacta de 74px con LogicTrackCard
+    height: 74
     color: (index % 2 === 0) ? "#1E1F24" : "#191A1E"
 
-    // ── Indicador de Color Lateral (Franja izquierda de pista) ──
+    property int trackIndex: index
+
+    // Franja lateral de color
     Rectangle {
         anchors.left: parent.left
         anchors.top: parent.top
@@ -15,7 +17,7 @@ Rectangle {
         color: model.trackColor || "#3498db"
     }
 
-    // ── Borde Inferior Sombra/Separador ──
+    // Separador inferior
     Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
@@ -24,7 +26,7 @@ Rectangle {
         color: "#111216"
     }
 
-    // ── Nombre de Pista Sutil en Marca de Agua ──
+    // Nombre de marca de agua
     Text {
         anchors.left: parent.left
         anchors.leftMargin: 12
@@ -35,10 +37,13 @@ Rectangle {
         font.bold: true
     }
 
-    // ── CONTENEDOR DE REGIONES (Área reservada para Bloques de Audio/MIDI) ──
-    Item {
-        id: regionContainer
-        anchors.fill: parent
-        // Aquí se instanciarán los bloques de Audio / MIDI en futuras fases
+    // 🎵 RENDERIZADO DINÁMICO DE CLIPS DE AUDIO CORRESPONDIENTES A ESTA PISTA
+    Repeater {
+        model: AudioEngine.regions
+        delegate: LogicAudioClip {
+            // Se dibuja solo si el clip pertenece a este carril/pista
+            visible: model.trackIndex === root.trackIndex
+            barWidth: 80
+        }
     }
 }

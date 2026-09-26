@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 Rectangle {
     id: root
@@ -11,7 +12,7 @@ Rectangle {
     border.color: "#111111"
     border.width: 1
 
-    // ── BISEL 3D (Relieve análogo clásico) ──
+    // ── BISEL 3D ──
     Rectangle {
         anchors.fill: parent
         anchors.margins: 1
@@ -45,26 +46,13 @@ Rectangle {
         color: model.recEnable ? "#5A1A1A" : "#353535"
         border.color: "#111111"
         
-        Rectangle { 
-            anchors.fill: parent; 
-            anchors.margins: 1; 
-            color: "transparent"; 
-            border.color: model.recEnable ? "#7A2E2E" : "#4A4A4A" 
-        }
-        
-        Rectangle {
-            anchors.centerIn: parent
-            width: 10; height: 10
-            radius: 5
-            color: model.recEnable ? "#FF3B30" : "#8B2222"
-        }
+        Rectangle { anchors.fill: parent; anchors.margins: 1; color: "transparent"; border.color: model.recEnable ? "#7A2E2E" : "#4A4A4A" }
+        Rectangle { anchors.centerIn: parent; width: 10; height: 10; radius: 5; color: model.recEnable ? "#FF3B30" : "#8B2222" }
 
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                AudioEngine.tracks.setRecEnable(index, !model.recEnable);
-            }
+            onClicked: AudioEngine.tracks.setRecEnable(index, !model.recEnable)
         }
     }
 
@@ -93,26 +81,13 @@ Rectangle {
         radius: 2
         color: model.mute ? "#D9822B" : "#353535"
         border.color: "#111111"
-        Rectangle { 
-            anchors.fill: parent; 
-            anchors.margins: 1; 
-            border.color: model.mute ? "#FFB060" : "#4A4A4A"; 
-            color: "transparent" 
-        }
-        Text { 
-            anchors.centerIn: parent; 
-            text: "M"; 
-            color: model.mute ? "#000000" : "#C65555"; 
-            font.pixelSize: 11; 
-            font.weight: Font.Bold 
-        }
+        Rectangle { anchors.fill: parent; anchors.margins: 1; border.color: model.mute ? "#FFB060" : "#4A4A4A"; color: "transparent" }
+        Text { anchors.centerIn: parent; text: "M"; color: model.mute ? "#000000" : "#C65555"; font.pixelSize: 11; font.weight: Font.Bold }
 
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                AudioEngine.tracks.setMute(index, !model.mute);
-            }
+            onClicked: AudioEngine.tracks.setMute(index, !model.mute)
         }
     }
 
@@ -124,30 +99,17 @@ Rectangle {
         radius: 2
         color: model.solo ? "#2E7D32" : "#353535"
         border.color: "#111111"
-        Rectangle { 
-            anchors.fill: parent; 
-            anchors.margins: 1; 
-            border.color: model.solo ? "#4CAF50" : "#4A4A4A"; 
-            color: "transparent" 
-        }
-        Text { 
-            anchors.centerIn: parent; 
-            text: "S"; 
-            color: model.solo ? "#FFFFFF" : "#C6C655"; 
-            font.pixelSize: 11; 
-            font.weight: Font.Bold 
-        }
+        Rectangle { anchors.fill: parent; anchors.margins: 1; border.color: model.solo ? "#4CAF50" : "#4A4A4A"; color: "transparent" }
+        Text { anchors.centerIn: parent; text: "S"; color: model.solo ? "#FFFFFF" : "#C6C655"; font.pixelSize: 11; font.weight: Font.Bold }
 
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                AudioEngine.tracks.setSolo(index, !model.solo);
-            }
+            onClicked: AudioEngine.tracks.setSolo(index, !model.solo)
         }
     }
 
-    // ── FILA INFERIOR (Controles de mezcla analógicos) ──
+    // ── FILA INFERIOR ──
 
     // 6. Eliminar Pista
     Text {
@@ -161,13 +123,11 @@ Rectangle {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                AudioEngine.tracks.removeTrack(index);
-            }
+            onClicked: AudioEngine.tracks.removeTrack(index)
         }
     }
 
-    // 7. Perilla (Knob) de Volumen Analógico
+    // 7. Perilla de Volumen
     Item {
         x: 40; y: 38
         width: 24; height: 24
@@ -207,13 +167,13 @@ Rectangle {
                 var deltaY = lastY - mouse.y
                 lastY = mouse.y
                 var currentGain = model.gain
-                var newGain = Math.max(-60, Math.min(6, currentGain + deltaY * 0.5));
-                AudioEngine.tracks.setGain(index, newGain);
+                var newGain = Math.max(-60, Math.min(6, currentGain + deltaY * 0.5))
+                AudioEngine.tracks.setGain(index, newGain)
             }
         }
     }
 
-    // 8. Perilla (Knob) de Paneo
+    // 8. Perilla de Paneo
     Item {
         x: 74; y: 38
         width: 24; height: 24
@@ -253,13 +213,39 @@ Rectangle {
                 var deltaY = lastY - mouse.y
                 lastY = mouse.y
                 var currentPan = model.pan
-                var newPan = Math.max(-1.0, Math.min(1.0, currentPan + deltaY * 0.02));
-                AudioEngine.tracks.setPan(index, newPan);
+                var newPan = Math.max(-1.0, Math.min(1.0, currentPan + deltaY * 0.02))
+                AudioEngine.tracks.setPan(index, newPan)
             }
         }
     }
 
-    // 9. Botón FX
+    // 9. Botón BOTÓN "🎵 Import Audio" (NUEVO)
+    Rectangle {
+        x: 112; y: 40
+        width: 76; height: 20
+        radius: 2
+        color: importMouseArea.containsMouse ? "#4B505E" : "#353535"
+        border.color: "#111111"
+        Rectangle { anchors.fill: parent; anchors.margins: 1; border.color: "#4A4A4A"; color: "transparent" }
+        
+        Text {
+            anchors.centerIn: parent
+            text: "🎵 Import"
+            color: "#E0E0E0"
+            font.pixelSize: 10
+            font.weight: Font.Medium
+        }
+
+        MouseArea {
+            id: importMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: fileDialog.open()
+        }
+    }
+
+    // 10. Botón FX
     Rectangle {
         x: 192; y: 40
         width: 60; height: 20
@@ -268,5 +254,24 @@ Rectangle {
         border.color: "#111111"
         Rectangle { anchors.fill: parent; anchors.margins: 1; border.color: "#4A4A4A"; color: "transparent" }
         Text { anchors.centerIn: parent; text: "FX"; color: "#A0A0A0"; font.pixelSize: 10; font.weight: Font.Bold }
+    }
+
+    // 📂 DIÁLOGO SELECTOR DE ARCHIVOS DE AUDIO
+    FileDialog {
+        id: fileDialog
+        title: "Seleccionar archivo de audio para " + model.trackName
+        nameFilters: ["Archivos de Audio (*.wav *.flac *.mp3 *.ogg *.aiff)"]
+        onAccepted: {
+            var selectedFile = fileDialog.selectedFile.toString()
+            console.log("📂 [GUI] Archivo seleccionado:", selectedFile)
+            
+            // Importar archivo en esta pista (index) comenzando en el compás 1 (startBeat = 0)
+            var success = AudioEngine.regions.importAudioFile(index, selectedFile, 0.0)
+            if (success) {
+                console.log("✅ [GUI] Audio importado exitosamente en el Timeline!")
+            } else {
+                console.log("❌ [GUI] Error al importar el archivo de audio")
+            }
+        }
     }
 }

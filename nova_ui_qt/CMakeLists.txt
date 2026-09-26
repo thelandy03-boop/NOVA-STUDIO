@@ -43,8 +43,10 @@ qt_add_executable(nova_ui_qt
     main.cpp
     src/NovaAudioEngine.h
     src/NovaAudioEngine.cpp
-    src/NovaTrackListModel.h       # 🎛️ NUEVO
-    src/NovaTrackListModel.cpp     # 🎛️ NUEVO
+    src/NovaTrackListModel.h
+    src/NovaTrackListModel.cpp
+    src/NovaRegionModel.h          # 🎵 NUEVO
+    src/NovaRegionModel.cpp        # 🎵 NUEVO
 )
 
 nova_mark_singletons()

@@ -150,27 +150,22 @@ void NovaTrackListModel::addAudioTrack(const QString &name)
 
     qDebug() << "⚡ [NovaTracks] Creando pista Audio Stereo en Ardour Core:" << name;
 
-    ARDOUR::RouteList routes;
-    ARDOUR::AudioTrackList tracks;
-
-    // API oficial para creación de AudioTracks
-    bool ok = m_session->new_audio_routes_tracks_bulk(
-        routes, tracks,
+    // Usar la función oficial wrapping de Ardour: new_audio_track
+    ARDOUR::AudioTrackList tracks = m_session->new_audio_track(
         2, 2,                                // 2 Entradas / 2 Salidas (Stereo)
-        nullptr,                             // RouteGroup (ninguno)
-        1,                                   // Cantidad (1 pista)
+        nullptr,                             // RouteGroup
+        1,                                   // Cantidad: 1 pista
         name.toStdString(),                  // Nombre
-        ARDOUR::PresentationInfo::max_order, // Posición en orden
+        ARDOUR::PresentationInfo::max_order, // Orden en la sesión
         ARDOUR::Normal,                      // Modo de pista Normal
         true,                                // Autoconectar entradas
         false                                // Trigger visibility
     );
 
-    if (ok && !routes.empty()) {
-        m_session->add_routes(routes, true, true, ARDOUR::PresentationInfo::max_order);
-        qDebug() << "✅ [NovaTracks] Pista de audio registrada exitosamente en la sesión. Total:" << routes.size();
+    if (!tracks.empty()) {
+        qDebug() << "✅ [NovaTracks] Pista de audio creada y registrada exitosamente. Total:" << tracks.size();
     } else {
-        qWarning() << "❌ [NovaTracks] new_audio_routes_tracks_bulk devolvió un resultado fallido.";
+        qWarning() << "❌ [NovaTracks] new_audio_track devolvió una lista vacía.";
     }
 }
 

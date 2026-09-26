@@ -1,5 +1,6 @@
 #include "NovaAudioEngine.h"
-#include "NovaTrackListModel.h" // 🎛️ NUEVO
+#include "NovaTrackListModel.h"
+#include "NovaRegionModel.h" // 🎵 NUEVO
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -38,7 +39,8 @@ void vstfx_destroy_editor(_VSTState*) {}
 NovaAudioEngine::NovaAudioEngine(QObject *parent)
     : QObject(parent)
 {
-    m_trackModel = new NovaTrackListModel(this); // 🎛️ NUEVO
+    m_trackModel = new NovaTrackListModel(this);
+    m_regionModel = new NovaRegionModel(this); // 🎵 NUEVO
     m_updateTimer = new QTimer(this);
     m_updateTimer->setInterval(16); // ~60 FPS
     connect(m_updateTimer, &QTimer::timeout, this, &NovaAudioEngine::updatePositionFromArdour);
@@ -142,9 +144,11 @@ bool NovaAudioEngine::initEngine()
         m_session->set_session_range_is_free(true);
         m_session->set_session_extents(Temporal::timepos_t(0), Temporal::timepos_t(Temporal::max_samplepos));
 
-        // 11. VINCULAR LA NUEVA SESIÓN AL MODELO DE PISTAS
-        m_trackModel->setSession(m_session); // 🎛️ NUEVO
-        Q_EMIT tracksChanged();             // 🎛️ NUEVO
+        // 11. VINCULAR LA NUEVA SESIÓN A LOS MODELOS DE PISTAS Y REGIONES
+        m_trackModel->setSession(m_session);
+        m_regionModel->setSession(m_session); // 🎵 NUEVO
+        Q_EMIT tracksChanged();
+        Q_EMIT regionsChanged();               // 🎵 NUEVO
 
         qDebug() << "✅ [NOVA ENGINE] ARDOUR::Session creada y vinculada con éxito en:" << sessionDir;
         qDebug() << "✅ [NOVA ENGINE] Extensión del Timeline fijada a máxima duración (Reproducción infinita activa)";
