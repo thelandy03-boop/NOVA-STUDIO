@@ -1,5 +1,6 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QUrl>
 #include <QDir>
 #include <QFileInfo>
@@ -9,16 +10,24 @@
 #include <QTimer>
 #include <QWindow>
 
+#include "src/NovaAudioEngine.h"
+
 int main(int argc, char *argv[])
 {
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
     qputenv("QML_DISABLE_DISK_CACHE", "1");
 
     QGuiApplication app(argc, argv);
-    // Evita que el proceso muera al destruir la Window en un reload
     app.setQuitOnLastWindowClosed(false);
 
+    // Instancia del Motor de Audio Nova / Ardour Bridge
+    NovaAudioEngine audioEngine;
+    audioEngine.initEngine();
+
     QQmlApplicationEngine engine;
+
+    // Registrar audioEngine globalmente en QML
+    engine.rootContext()->setContextProperty("AudioEngine", &audioEngine);
 
     // build/ → ../qml  |  build/Release → ../../qml
     QStringList candidates;
@@ -41,7 +50,6 @@ int main(int argc, char *argv[])
     if (!mainQml.isEmpty()) {
         qDebug() << "HOT-RELOAD activo desde:" << qmlDir;
 
-        // Imports relativos tipo import "theme" / import "../draft"
         engine.addImportPath(qmlDir);
         engine.addImportPath(qmlDir + "/skins");
         engine.addImportPath(qmlDir + "/skins/draft");
@@ -57,11 +65,9 @@ int main(int argc, char *argv[])
 
         auto addAllPaths = [watcher, qmlDir]() {
             const auto files = watcher->files();
-            if (!files.isEmpty())
-                watcher->removePaths(files);
+            if (!files.isEmpty()) watcher->removePaths(files);
             const auto dirs = watcher->directories();
-            if (!dirs.isEmpty())
-                watcher->removePaths(dirs);
+            if (!dirs.isEmpty()) watcher->removePaths(dirs);
 
             watcher->addPath(qmlDir);
             QDirIterator it(qmlDir,
@@ -77,7 +83,7 @@ int main(int argc, char *argv[])
 
         addAllPaths();
 
-        auto doReload = [&engine, url, addAllPaths]() {
+        auto doReload = [&engine, url, addAllPaths, &audioEngine]() {
             qDebug() << "HOT-RELOAD ejecutando...";
 
             const auto roots = engine.rootObjects();
@@ -88,9 +94,10 @@ int main(int argc, char *argv[])
             }
 
             engine.clearComponentCache();
+            // Mantener el contexto de AudioEngine tras la recarga
+            engine.rootContext()->setContextProperty("AudioEngine", &audioEngine);
             addAllPaths();
 
-            // Deja que deleteLater corra antes de cargar de nuevo
             QTimer::singleShot(0, &engine, [&engine, url]() {
                 engine.load(url);
                 if (engine.rootObjects().isEmpty())

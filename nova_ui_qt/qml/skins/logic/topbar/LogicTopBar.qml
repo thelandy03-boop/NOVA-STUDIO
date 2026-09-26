@@ -8,6 +8,9 @@ Rectangle {
     implicitHeight: 70
     color: "#2C303A"
 
+    // Señal emitida cuando el usuario selecciona "Colaboración" en Tools
+    signal collaborationRequested()
+
     // Brillo sutil superior
     Rectangle {
         anchors.left: parent.left
@@ -26,7 +29,11 @@ Rectangle {
 
         LogicLogoBlock { Layout.fillHeight: true }
         LogicToolBlock { Layout.fillHeight: true }
-        LogicToolsButtonBlock { Layout.fillHeight: true }
+        
+        LogicToolsButtonBlock { 
+            Layout.fillHeight: true 
+            onCollaborationRequested: root.collaborationRequested()
+        }
     }
 
     // ── 2. GRUPO CENTRAL (Transporte + LCD Centrados en Pantalla) ──
@@ -56,5 +63,5 @@ Rectangle {
         anchors.bottom: parent.bottom
         height: 1
         color: "#181A22"
-    }
+    } 
 }

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import "topbar"
 import "tcp"
 import "timeline"
+import "dialogs"
 
 Rectangle {
     id: root
@@ -16,8 +17,11 @@ Rectangle {
 
         // ZONA 1: TOP BAR (70px)
         LogicTopBar {
+            id: topBar
             Layout.fillWidth: true
             Layout.preferredHeight: 70
+
+            onCollaborationRequested: inviteCollaboratorsDialog.open()
         }
 
         // ZONA MEDIA: TCP + ARRANGER
@@ -32,7 +36,7 @@ Rectangle {
                 Layout.fillHeight: true
             }
 
-            // ZONA 3: TIMELINE / ARRANGER (NUEVO)
+            // ZONA 3: TIMELINE / ARRANGER
             LogicTimelinePanel {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -66,6 +70,23 @@ Rectangle {
                     font.pixelSize: 11
                 }
             }
+        }
+    }
+
+    // ============================================================
+    // DIÁLOGO MODAL DE COLABORADORES (Perteneciente al skin Logic)
+    // ============================================================
+    InviteCollaboratorsDialog {
+        id: inviteCollaboratorsDialog
+        anchors.fill: parent
+        z: 9999
+
+        onInviteSent: (user, message) => {
+            console.log(" Invitación enviada a:", user, "| Mensaje:", message)
+        }
+
+        onLinkCopied: (link) => {
+            console.log(" Enlace copiado al portapapeles:", link)
         }
     }
 }

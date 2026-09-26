@@ -13,7 +13,7 @@ Item {
         color: "#1E1F24"
     }
 
-    // Carriles horizontales
+    // Carriles horizontales (Pistas)
     Column {
         anchors.fill: parent
 
@@ -47,13 +47,14 @@ Item {
                 width: root.barWidth
                 height: parent.height
 
-                // Línea de compás principal
+                // Línea de compás principal (Mismo color y posición que la regla)
                 Rectangle {
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     width: 1
-                    color: "#282B36"
+                    color: "#353945"
+                    opacity: 0.5
                 }
 
                 // Líneas de sub-divisiones (beats)
@@ -71,7 +72,7 @@ Item {
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
                                 width: 1
-                                color: "#22242D"
+                                color: "#252833"
                                 opacity: index === 0 ? 0.0 : 0.35
                             }
                         }

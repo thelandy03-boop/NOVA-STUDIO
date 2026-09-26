@@ -1003,7 +1003,7 @@ def configure(conf):
     conf.env['MICRO'] = MICRO
     conf.line_just = 52
     autowaf.set_recursive()
-    bld.recurse('libs/scintilla')
+    conf.recurse('libs/scintilla')
     autowaf.configure(conf)
     autowaf.display_header('Ardour Configuration')
 

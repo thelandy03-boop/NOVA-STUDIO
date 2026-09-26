@@ -3,16 +3,18 @@ import QtQuick
 Item {
     id: root
 
-    property real timelineX: 180       // Posición absoluta en la canción (px)
-    property real contentX: 0          // <--- DECLARACIÓN DE LA PROPIEDAD NECESARIA
+    property real timelineX: 0
+    property real contentX: 0
 
-    x: Math.round(timelineX - root.contentX) - 8
+    // EL TRUCO DE PRECISIÓN PÍXEL A PÍXEL:
+    // Al restar 8px, el centro exacto de la aguja cae sobre el compás exacto (timelineX)
+    x: Math.round(root.timelineX - root.contentX) - 8
     anchors.top: parent.top
     anchors.bottom: parent.bottom
     width: 16
     z: 30
 
-    // 1. Aguja
+    // 1. Aguja vertical
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
@@ -20,7 +22,7 @@ Item {
         anchors.bottom: parent.bottom
         width: 1
         color: "#E2E6EF"
-        opacity: 0.90
+        opacity: 0.95
     }
 
     // 2. Cabezal SVG

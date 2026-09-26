@@ -6,7 +6,7 @@ Item {
 
     property int barWidth: 80
     property int totalBars: 60
-    property real contentX: 0          // <--- DECLARACIÓN DE LA PROPIEDAD NECESARIA
+    property real contentX: 0
 
     // Fondo
     Rectangle {
@@ -30,30 +30,34 @@ Item {
                     width: root.barWidth
                     height: root.height
 
+                    // Línea principal de compás
                     Rectangle {
                         anchors.left: parent.left
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         width: 1
-                        color: "#2C303A"
+                        color: "#353945"
                     }
 
+                    // Número de compás
                     Text {
                         anchors.left: parent.left
-                        anchors.leftMargin: 6
+                        anchors.leftMargin: 5
                         anchors.top: parent.top
-                        anchors.topMargin: 4
+                        anchors.topMargin: 3
                         text: (index + 1).toString()
-                        color: "#8F93A0"
+                        color: "#9CA1B0"
                         font.pixelSize: 11
+                        font.weight: Font.Medium
                         font.family: "sans-serif"
                     }
 
+                    // Sub-divisiones
                     Row {
                         anchors.bottom: parent.bottom
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        height: 6
+                        height: 8
 
                         Repeater {
                             model: 4
@@ -65,8 +69,8 @@ Item {
                                     anchors.left: parent.left
                                     anchors.bottom: parent.bottom
                                     width: 1
-                                    height: index === 0 ? 6 : 3
-                                    color: "#2C303A"
+                                    height: index === 0 ? 8 : 4
+                                    color: index === 0 ? "#353945" : "#2A2D38"
                                 }
                             }
                         }
