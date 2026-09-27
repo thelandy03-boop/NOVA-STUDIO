@@ -151,9 +151,10 @@ Rectangle {
         cursorShape: Qt.PointingHandCursor
 
         function updatePlayheadPosition(mouse) {
-            var rawX = mouse.x + root.contentX
+            // 🛑 TOPE ESTRICTO: No permite valores a la izquierda del compás 1 (x < 0)
+            var rawX = Math.max(0, mouse.x + root.contentX)
             var pixelsPerBeat = root.barWidth / 4.0
-            var targetBeat = Math.max(0, rawX / pixelsPerBeat)
+            var targetBeat = rawX / pixelsPerBeat
             AudioEngine.locateBeat(targetBeat)
         }
 

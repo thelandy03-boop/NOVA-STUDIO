@@ -5,11 +5,9 @@
 #include <QByteArray>
 #include <QString>
 #include <QVariant>
-#include <QMetaObject>
 #include <vector>
 #include <memory>
 
-// ── PROTECCIÓN CONTRA COLISIONES DE SEÑALES ARDOUR/QT ────────────────
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -29,7 +27,6 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
-// ─────────────────────────────────────────────────────────────────────
 
 struct NovaRegionItem {
     QString id;
@@ -40,7 +37,8 @@ struct NovaRegionItem {
     double startBeat;
     double lengthBeats;
     QString color;
-    std::shared_ptr<ARDOUR::Region> regionPtr; // Puntero nativo al objeto Ardour
+    bool isLiveRecording = false;
+    std::shared_ptr<ARDOUR::Region> regionPtr;
 };
 
 class NovaRegionModel : public QAbstractListModel
@@ -56,7 +54,8 @@ public:
         LengthFramesRole,
         StartBeatRole,
         LengthBeatsRole,
-        ColorRole
+        ColorRole,
+        IsLiveRecordingRole
     };
     Q_ENUM(RegionRoles)
 
@@ -65,16 +64,20 @@ public:
 
     void setSession(ARDOUR::Session *session);
 
-    // QAbstractListModel overrides
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // API pública invocable desde QML (Fase 5)
     Q_INVOKABLE bool importAudioFile(int trackIndex, const QString &filePath, double startBeat = 0.0);
     Q_INVOKABLE bool moveRegion(int regionIndex, double newStartBeat);
     Q_INVOKABLE bool resizeRegion(int regionIndex, double newStartBeat, double newLengthBeats);
     Q_INVOKABLE void removeRegion(int regionIndex);
+
+    // 🎙️ MÉTODOS DE GRABACIÓN EN VIVO (NUEVO)
+    void createLiveRecordingClip(double startBeat);
+    void updateLiveRecordingClip(double lengthBeats);
+    void finalizeLiveRecordingClip();
+
     Q_INVOKABLE void rebuildRegionCache();
 
 signals:
@@ -84,4 +87,5 @@ private:
     ARDOUR::Session *m_session = nullptr;
     std::vector<NovaRegionItem> m_regions;
     PBD::ScopedConnectionList m_sessionConnections;
+    int m_liveRecordingIndex = -1;
 };

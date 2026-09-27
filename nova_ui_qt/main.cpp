@@ -11,7 +11,7 @@
 #include <QWindow>
 
 #include "src/NovaAudioEngine.h"
-#include "src/NovaWaveformItem.h" // 🎨 NUEVO: Header para renderizado de picos de audio
+#include "src/views/NovaWaveformItem.h" // 🎨 Ruta modular corregida
 
 int main(int argc, char *argv[])
 {

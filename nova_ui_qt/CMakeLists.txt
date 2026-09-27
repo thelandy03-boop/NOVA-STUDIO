@@ -7,7 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 get_filename_component(ARDOUR_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../build" ABSOLUTE)
 get_filename_component(ARDOUR_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
-# CONFIGURACIÓN COMPLETA DE RPATH PARA TODAS LAS LIBRERÍAS DE ARDOUR
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 set(CMAKE_INSTALL_RPATH
@@ -43,12 +42,18 @@ qt_add_executable(nova_ui_qt
     main.cpp
     src/NovaAudioEngine.h
     src/NovaAudioEngine.cpp
-    src/NovaTrackListModel.h
-    src/NovaTrackListModel.cpp
-    src/NovaRegionModel.h
-    src/NovaRegionModel.cpp
-    src/NovaWaveformItem.h         # 🎨 NUEVO
-    src/NovaWaveformItem.cpp       # 🎨 NUEVO
+    src/core/NovaSessionManager.h
+    src/core/NovaSessionManager.cpp
+    src/core/NovaTransportController.h
+    src/core/NovaTransportController.cpp
+    src/core/NovaRecordManager.h
+    src/core/NovaRecordManager.cpp
+    src/models/NovaTrackListModel.h
+    src/models/NovaTrackListModel.cpp
+    src/models/NovaRegionModel.h
+    src/models/NovaRegionModel.cpp
+    src/views/NovaWaveformItem.h
+    src/views/NovaWaveformItem.cpp
 )
 
 nova_mark_singletons()
@@ -99,7 +104,6 @@ target_compile_definitions(nova_ui_qt PRIVATE
     PROGRAM_VERSION="v9"
 )
 
-# Buscar libfst.so de forma opcional/inteligente
 find_library(FST_LIB fst HINTS "${ARDOUR_BUILD_DIR}/libs/fst")
 
 set(EXTRA_ARDOUR_LIBS "")
@@ -109,7 +113,7 @@ endif()
 if(FST_LIB)
     list(APPEND EXTRA_ARDOUR_LIBS "${FST_LIB}")
 elseif(EXISTS "${ARDOUR_BUILD_DIR}/libs/fst/libfst.so")
-    list(APPEND EXTRA_ARDOUR_LIBS "${FST_LIB}")
+    list(APPEND EXTRA_ARDOUR_LIBS "${ARDOUR_BUILD_DIR}/libs/fst/libfst.so")
 endif()
 
 target_link_libraries(nova_ui_qt PRIVATE

@@ -6,7 +6,7 @@ Item {
     implicitWidth: 250
     implicitHeight: 70
 
-    // Pista de botones de transporte ampliada
+    // Pista de botones de transporte analógicos
     Rectangle {
         anchors.centerIn: parent
         width: 245
@@ -40,7 +40,7 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (typeof AudioEngine !== "undefined") {
-                            AudioEngine.stop(); // O regresar al inicio
+                            AudioEngine.rewind();
                         }
                     }
                 }
@@ -51,7 +51,6 @@ Item {
             Rectangle {
                 width: 48
                 height: parent.height
-                // Si el motor está reproduciendo, se ilumina ligeramente
                 color: (typeof AudioEngine !== "undefined" && AudioEngine.isPlaying) 
                         ? "#454A56" 
                         : (maPlay.pressed ? "#252830" : "transparent")
@@ -104,11 +103,13 @@ Item {
             }
             Rectangle { width: 1; height: parent.height; color: "#1A1C22" }
 
-            // 4. Record
+            // 4. Record (Conmutador 1º toque = Grabación + Marcha / 2º toque = Parar)
             Rectangle {
                 width: 48
                 height: parent.height
-                color: maRecord.pressed ? "#252830" : "transparent"
+                color: (typeof AudioEngine !== "undefined" && AudioEngine.isRecording)
+                        ? "#5A1A1A" 
+                        : (maRecord.pressed ? "#252830" : "transparent")
 
                 Rectangle {
                     anchors.centerIn: parent
@@ -137,7 +138,9 @@ Item {
             Rectangle {
                 width: 48
                 height: parent.height
-                color: maLoop.pressed ? "#252830" : "transparent"
+                color: (typeof AudioEngine !== "undefined" && AudioEngine.loopEnabled)
+                        ? "#554A20"
+                        : (maLoop.pressed ? "#252830" : "transparent")
 
                 Image {
                     anchors.centerIn: parent
@@ -152,7 +155,9 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        console.log("Loop presionado")
+                        if (typeof AudioEngine !== "undefined") {
+                            AudioEngine.toggleLoop();
+                        }
                     }
                 }
             }
