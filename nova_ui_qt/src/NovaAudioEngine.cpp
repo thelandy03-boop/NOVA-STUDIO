@@ -1,13 +1,14 @@
 #include "NovaAudioEngine.h"
 #include "NovaTrackListModel.h"
 #include "NovaRegionModel.h"
-#include "NovaWaveformItem.h" // 🎨 NUEVO: Vinculación con renderizador de picos de onda
+#include "NovaWaveformItem.h"
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QCoreApplication>
 #include <cmath>
+#include <algorithm>
 
 #pragma push_macro("emit")
 #pragma push_macro("slots")
@@ -26,6 +27,7 @@
 #include "ardour/filesystem_paths.h"
 #include "ardour/audio_backend.h"
 #include "ardour/rc_configuration.h"
+#include "ardour/location.h"   // 🔁 CONTROL DE LOOP EN ARDOUR CORE
 
 #pragma pop_macro("emit")
 #pragma pop_macro("slots")
@@ -148,7 +150,7 @@ bool NovaAudioEngine::initEngine()
         // 11. VINCULAR LA NUEVA SESIÓN A LOS MODELOS DE PISTAS, REGIONES Y WAVEFORMS
         m_trackModel->setSession(m_session);
         m_regionModel->setSession(m_session);
-        NovaWaveformItem::setSession(m_session); // 🎨 NUEVO: Conexión para lectura de picos reales
+        NovaWaveformItem::setSession(m_session);
 
         Q_EMIT tracksChanged();
         Q_EMIT regionsChanged();
@@ -236,6 +238,70 @@ void NovaAudioEngine::setBpm(double newBpm)
     if (qFuzzyCompare(m_bpm, newBpm)) return;
     m_bpm = newBpm;
     Q_EMIT bpmChanged();
+}
+
+// 🎯 CONTROL DE NAVEGACIÓN Y REUBICACIÓN EN EL TIMELINE (Scrubbing)
+void NovaAudioEngine::locateFrame(double frame)
+{
+    if (!m_session) return;
+    ARDOUR::samplepos_t pos = static_cast<ARDOUR::samplepos_t>(std::max(0.0, frame));
+    m_session->request_locate(pos);
+}
+
+void NovaAudioEngine::locateBeat(double beat)
+{
+    if (!m_session) return;
+    double sr = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
+    double bpm = m_bpm > 0 ? m_bpm : 120.0;
+    double seconds = beat * (60.0 / bpm);
+    locateFrame(seconds * sr);
+}
+
+// 🔁 CONTROL DE RANGO DE BUCLE (Loop Region en Ardour Core)
+void NovaAudioEngine::setLoopRange(double startBeat, double endBeat)
+{
+    if (!m_session || !m_session->locations()) return;
+
+    m_loopStartBeat = std::max(0.0, startBeat);
+    m_loopEndBeat = std::max(m_loopStartBeat + 1.0, endBeat);
+
+    double sr = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
+    double bpm = m_bpm > 0 ? m_bpm : 120.0;
+    double startSeconds = m_loopStartBeat * (60.0 / bpm);
+    double endSeconds = m_loopEndBeat * (60.0 / bpm);
+
+    ARDOUR::samplepos_t startFrame = static_cast<ARDOUR::samplepos_t>(startSeconds * sr);
+    ARDOUR::samplepos_t endFrame = static_cast<ARDOUR::samplepos_t>(endSeconds * sr);
+
+    // 🔒 OBTENER O CREAR DE FORMA SEGURA LA UBICACIÓN DEL BUCLE EN LA SESIÓN
+    ARDOUR::Location* loopLoc = m_session->locations()->auto_loop_location();
+    if (!loopLoc) {
+        loopLoc = new ARDOUR::Location(*m_session, Temporal::timepos_t(startFrame), Temporal::timepos_t(endFrame), "Loop", ARDOUR::Location::IsAutoLoop);
+        m_session->locations()->add(loopLoc);
+        m_session->set_auto_loop_location(loopLoc);
+    } else {
+        loopLoc->set_start(Temporal::timepos_t(startFrame));
+        loopLoc->set_end(Temporal::timepos_t(endFrame));
+    }
+
+    Q_EMIT loopRangeChanged();
+    qDebug() << "🔁 [NOVA ENGINE] Loop Range fijado en Ardour Core:" << m_loopStartBeat << "a" << m_loopEndBeat << "beats";
+}
+
+void NovaAudioEngine::setLoopEnabled(bool enabled)
+{
+    if (!m_session) return;
+    if (m_loopEnabled == enabled) return;
+
+    m_loopEnabled = enabled;
+    m_session->request_play_loop(m_loopEnabled);
+    Q_EMIT loopEnabledChanged();
+    qDebug() << "🔁 [NOVA ENGINE] Loop activado:" << m_loopEnabled;
+}
+
+void NovaAudioEngine::toggleLoop()
+{
+    setLoopEnabled(!m_loopEnabled);
 }
 
 void NovaAudioEngine::updatePositionFromArdour()

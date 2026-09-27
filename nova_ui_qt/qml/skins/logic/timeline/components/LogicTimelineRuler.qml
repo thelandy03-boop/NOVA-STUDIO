@@ -1,77 +1,140 @@
 import QtQuick
 
-Item {
+Rectangle {
     id: root
+    implicitWidth: 4800
     implicitHeight: 28
+    color: "#25272E"
 
-    property int barWidth: 80
-    property int totalBars: 60
+    property real barWidth: 80.0
     property real contentX: 0
 
-    // Fondo
+    // Borde inferior
     Rectangle {
-        anchors.fill: parent
-        color: "#16181D"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 1
+        color: "#14151A"
     }
 
-    // Regla scrolleable
-    Item {
-        anchors.fill: parent
-        clip: true
+    // ── BARRA VISUAL DE BUCLE (LOOP BAR) ──
+    Rectangle {
+        id: loopBar
+        y: 2
+        height: 8
+        color: AudioEngine.loopEnabled ? "#E6B800" : "#555A66"
+        opacity: 0.85
+        radius: 2
+        z: 2
 
-        Row {
-            x: -root.contentX
-            height: parent.height
+        property real startBeat: AudioEngine.loopStartBeat
+        property real endBeat: AudioEngine.loopEndBeat
 
-            Repeater {
-                model: root.totalBars
+        x: (startBeat / 4.0) * root.barWidth - root.contentX
+        width: Math.max(16, ((endBeat - startBeat) / 4.0) * root.barWidth)
 
-                Item {
-                    width: root.barWidth
-                    height: root.height
+        // Tirador izquierdo del bucle
+        Rectangle {
+            width: 6; height: parent.height
+            anchors.left: parent.left
+            color: "#FFFFFF"
+            radius: 1
 
-                    // Línea principal de compás
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        width: 1
-                        color: "#353945"
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.SizeHorCursor
+                onPositionChanged: (mouse) => {
+                    if (pressed) {
+                        var pt = mapToItem(root, mouse.x, mouse.y)
+                        var rawX = pt.x + root.contentX
+                        var newStartBeat = Math.max(0, Math.floor((rawX / (root.barWidth / 4.0))))
+                        if (newStartBeat < AudioEngine.loopEndBeat) {
+                            AudioEngine.setLoopRange(newStartBeat, AudioEngine.loopEndBeat)
+                        }
                     }
+                }
+            }
+        }
 
-                    // Número de compás
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 5
-                        anchors.top: parent.top
-                        anchors.topMargin: 3
-                        text: (index + 1).toString()
-                        color: "#9CA1B0"
-                        font.pixelSize: 11
-                        font.weight: Font.Medium
-                        font.family: "sans-serif"
+        // Tirador derecho del bucle
+        Rectangle {
+            width: 6; height: parent.height
+            anchors.right: parent.right
+            color: "#FFFFFF"
+            radius: 1
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.SizeHorCursor
+                onPositionChanged: (mouse) => {
+                    if (pressed) {
+                        var pt = mapToItem(root, mouse.x, mouse.y)
+                        var rawX = pt.x + root.contentX
+                        var newEndBeat = Math.max(AudioEngine.loopStartBeat + 1, Math.ceil((rawX / (root.barWidth / 4.0))))
+                        AudioEngine.setLoopRange(AudioEngine.loopStartBeat, newEndBeat)
                     }
+                }
+            }
+        }
 
-                    // Sub-divisiones
-                    Row {
-                        anchors.bottom: parent.bottom
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        height: 8
+        MouseArea {
+            anchors.fill: parent
+            anchors.leftMargin: 6
+            anchors.rightMargin: 6
+            cursorShape: Qt.PointingHandCursor
+            onClicked: AudioEngine.toggleLoop()
+        }
+    }
 
-                        Repeater {
-                            model: 4
-                            Item {
-                                width: root.barWidth / 4
-                                height: parent.height
+    // ── MARCAS DE COMPASES Y NÚMEROS ──
+    Row {
+        x: -root.contentX
+        anchors.top: loopBar.bottom
+        anchors.topMargin: 2
+        anchors.bottom: parent.bottom
 
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.bottom: parent.bottom
-                                    width: 1
-                                    height: index === 0 ? 8 : 4
-                                    color: index === 0 ? "#353945" : "#2A2D38"
-                                }
+        Repeater {
+            model: 60 // 60 Compases
+
+            Item {
+                width: root.barWidth
+                height: parent.height
+
+                // Número de compás
+                Text {
+                    x: 4; y: 0
+                    text: (index + 1).toString()
+                    color: "#A0A5B5"
+                    font.pixelSize: 10
+                    font.bold: true
+                }
+
+                // Línea vertical principal
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.bottom: parent.bottom
+                    height: 8
+                    width: 1
+                    color: "#606575"
+                }
+
+                // Sub-divisiones (Beats 2, 3, 4)
+                Row {
+                    anchors.fill: parent
+
+                    Repeater {
+                        model: 4
+                        Item {
+                            width: root.barWidth / 4
+                            height: parent.height
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.bottom: parent.bottom
+                                height: index === 0 ? 0 : 4
+                                width: 1
+                                color: "#404555"
                             }
                         }
                     }
@@ -80,11 +143,23 @@ Item {
         }
     }
 
-    Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 1
-        color: "#0E0F13"
+    // ── INTERACCIÓN CLIC Y ARRASTRE DE AGUJA (SCRUBBING) ──
+    MouseArea {
+        id: rulerScrubArea
+        anchors.fill: parent
+        anchors.topMargin: 10 // Deja el bucle libre arriba
+        cursorShape: Qt.PointingHandCursor
+
+        function updatePlayheadPosition(mouse) {
+            var rawX = mouse.x + root.contentX
+            var pixelsPerBeat = root.barWidth / 4.0
+            var targetBeat = Math.max(0, rawX / pixelsPerBeat)
+            AudioEngine.locateBeat(targetBeat)
+        }
+
+        onPressed: (mouse) => updatePlayheadPosition(mouse)
+        onPositionChanged: (mouse) => {
+            if (pressed) updatePlayheadPosition(mouse)
+        }
     }
 }
