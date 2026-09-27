@@ -45,8 +45,10 @@ qt_add_executable(nova_ui_qt
     src/NovaAudioEngine.cpp
     src/NovaTrackListModel.h
     src/NovaTrackListModel.cpp
-    src/NovaRegionModel.h          # 🎵 NUEVO
-    src/NovaRegionModel.cpp        # 🎵 NUEVO
+    src/NovaRegionModel.h
+    src/NovaRegionModel.cpp
+    src/NovaWaveformItem.h         # 🎨 NUEVO
+    src/NovaWaveformItem.cpp       # 🎨 NUEVO
 )
 
 nova_mark_singletons()

@@ -11,6 +11,7 @@
 #include <QWindow>
 
 #include "src/NovaAudioEngine.h"
+#include "src/NovaWaveformItem.h" // 🎨 NUEVO: Header para renderizado de picos de audio
 
 int main(int argc, char *argv[])
 {
@@ -19,6 +20,9 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(false);
+
+    // 🎨 REGISTRAR EL TIPO QML NATIVO PARA FORMAS DE ONDA (NovaStudio 1.0)
+    qmlRegisterType<NovaWaveformItem>("NovaStudio", 1, 0, "NovaWaveformItem");
 
     // Instancia del Motor de Audio Nova / Ardour Bridge
     NovaAudioEngine audioEngine;
@@ -130,5 +134,5 @@ int main(int argc, char *argv[])
             return -1;
     }
 
-    return app.exec();
+    return app.exec(); 
 }
