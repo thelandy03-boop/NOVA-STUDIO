@@ -1,5 +1,6 @@
 #include "NovaRegionModel.h"
-#include <QDebug>
+#include "core/NovaLogging.h"
+#include "core/NovaTimeUtils.h"
 #include <QFileInfo>
 #include <QDateTime>
 #include <algorithm>
@@ -153,18 +154,19 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
         std::shared_ptr<ARDOUR::Region> region = ARDOUR::RegionFactory::create(sources, plist);
         if (!region) return false;
 
-        double bpm = 120.0;
         double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
-        double secondsPerBeat = 60.0 / bpm;
-        ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(startBeat * secondsPerBeat * sampleRate);
+        ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
 
         auto playlist = targetTrack->playlist();
         if (playlist) {
             playlist->add_region(region, Temporal::timepos_t(startSample));
             rebuildRegionCache();
+            qCDebug(novaModel) << "Archivo de audio importado con éxito:" << fileInfo.fileName();
             return true;
         }
-    } catch (...) {}
+    } catch (const std::exception &e) {
+        qCWarning(novaModel) << "Excepción al importar audio:" << e.what();
+    }
 
     return false;
 }
@@ -174,10 +176,8 @@ bool NovaRegionModel::moveRegion(int regionIndex, double newStartBeat)
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return false;
 
     auto &item = m_regions[static_cast<size_t>(regionIndex)];
-    double bpm = 120.0;
     double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 44100.0;
-    double secondsPerBeat = 60.0 / bpm;
-    ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(newStartBeat * secondsPerBeat * sampleRate);
+    ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(newStartBeat, sampleRate, 120.0));
 
     if (item.regionPtr) {
         item.regionPtr->set_position(Temporal::timepos_t(startSample));
@@ -195,11 +195,10 @@ bool NovaRegionModel::resizeRegion(int regionIndex, double newStartBeat, double 
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return false;
 
     auto &item = m_regions[static_cast<size_t>(regionIndex)];
-    double bpm = 120.0;
     double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 44100.0;
-    double secondsPerBeat = 60.0 / bpm;
-    ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(newStartBeat * secondsPerBeat * sampleRate);
-    ARDOUR::samplecnt_t lengthSamples = static_cast<ARDOUR::samplecnt_t>(newLengthBeats * secondsPerBeat * sampleRate);
+    
+    ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(newStartBeat, sampleRate, 120.0));
+    ARDOUR::samplecnt_t lengthSamples = static_cast<ARDOUR::samplecnt_t>(NovaTimeUtils::beatToFrame(newLengthBeats, sampleRate, 120.0));
 
     if (item.regionPtr) {
         item.regionPtr->set_position(Temporal::timepos_t(startSample));
@@ -250,9 +249,9 @@ void NovaRegionModel::removeRegion(int regionIndex)
         m_liveRecordingIndex--;
     }
 
+    qCDebug(novaModel) << "Region eliminada del modelo. Índice:" << regionIndex;
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }
-
 
 // 🎙️ CREAR CLIP EN VIVO
 void NovaRegionModel::createLiveRecordingClip(double startBeat)
@@ -294,6 +293,7 @@ void NovaRegionModel::createLiveRecordingClip(double startBeat)
     m_liveRecordingIndex = row;
     endInsertRows();
 
+    qCDebug(novaModel) << "Clip de grabación en vivo instanciado en beat:" << startBeat;
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }
 
@@ -316,7 +316,7 @@ void NovaRegionModel::finalizeLiveRecordingClip()
 
         Q_EMIT dataChanged(index(m_liveRecordingIndex), index(m_liveRecordingIndex), 
                            {RegionNameRole, ColorRole, IsLiveRecordingRole});
-        qDebug() << "✅ [NovaRegion] Clip grabado conservado permanentemente:" << item.name << "Duración beats:" << item.lengthBeats;
+        qCDebug(novaModel) << "Clip grabado conservado permanentemente:" << item.name << "Duración beats:" << item.lengthBeats;
     }
     m_liveRecordingIndex = -1;
 }
@@ -325,7 +325,6 @@ void NovaRegionModel::rebuildRegionCache()
 {
     if (!m_session) return;
 
-    // Guardar clips grabados que el backend Dummy no escribió en disco
     std::vector<NovaRegionItem> localPreservedClips;
     for (const auto &item : m_regions) {
         if (!item.regionPtr && item.lengthBeats > 0.1) {
@@ -338,8 +337,6 @@ void NovaRegionModel::rebuildRegionCache()
 
     auto routeList = m_session->get_routes();
     double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
-    double bpm = 120.0;
-    double secondsPerBeat = 60.0 / bpm;
 
     if (routeList) {
         int trackIdx = 0;
@@ -362,11 +359,8 @@ void NovaRegionModel::rebuildRegionCache()
                         item.startFrame = static_cast<double>(reg->position_sample());
                         item.lengthFrames = static_cast<double>(reg->length_samples());
 
-                        double startSeconds = item.startFrame / sampleRate;
-                        double lengthSeconds = item.lengthFrames / sampleRate;
-
-                        item.startBeat = startSeconds / secondsPerBeat;
-                        item.lengthBeats = lengthSeconds / secondsPerBeat;
+                        item.startBeat = NovaTimeUtils::frameToBeat(item.startFrame, sampleRate, 120.0);
+                        item.lengthBeats = NovaTimeUtils::frameToBeat(item.lengthFrames, sampleRate, 120.0);
                         item.color = QStringLiteral("#4A90E2");
                         item.isLiveRecording = false;
 
@@ -378,11 +372,11 @@ void NovaRegionModel::rebuildRegionCache()
         }
     }
 
-    // Reincorporar clips preservados
     for (auto &clip : localPreservedClips) {
         m_regions.push_back(clip);
     }
 
     endResetModel();
+    qCDebug(novaModel) << "Caché de regiones reconstruido. Total regiones:" << m_regions.size();
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }

@@ -4,7 +4,7 @@ import NovaStudio 1.0
 Item {
     id: root
     
-    // Propiedades expuestas con protección estricta contra falsos valores de 0.0 en JS (operador ||)
+    // Propiedades expuestas
     property real barWidth: 80.0
     property real startBeat: (typeof model.startBeat !== "undefined") ? model.startBeat : 0.0
     property real lengthBeats: (typeof model.lengthBeats !== "undefined") ? model.lengthBeats : 0.0
@@ -14,23 +14,20 @@ Item {
     property bool isSelected: false
     property bool isLiveRecording: (typeof model.isLiveRecording !== "undefined") ? model.isLiveRecording : false
 
-    // Posición inicial en el timeline
-    x: (startBeat / 4.0) * barWidth
-    
-    // 🔒 SI ESTÁ GRABANDO: El ancho es dinámico desde 0px sin límite mínimo para ir soldado a la aguja
-    width: root.isLiveRecording ? ((lengthBeats / 4.0) * barWidth) : Math.max(24, (lengthBeats / 4.0) * barWidth)
+    // Posición y ancho calculados con C++ Helpers
+    x: AudioEngine.beatToPixel(startBeat, barWidth)
+    width: root.isLiveRecording ? AudioEngine.beatToPixel(lengthBeats, barWidth) : Math.max(24, AudioEngine.beatToPixel(lengthBeats, barWidth))
     height: 66
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     Binding on x {
         when: !mainDragArea.drag.active && !leftHandleArea.pressed
-        value: (root.startBeat / 4.0) * root.barWidth
+        value: AudioEngine.beatToPixel(root.startBeat, root.barWidth)
     }
     
     Binding on width {
         when: !rightHandleArea.pressed && !leftHandleArea.pressed
-        // 🔒 Mantiene el mismo cálculo dinámico reactivo para el motor de layouts de Qt
-        value: root.isLiveRecording ? ((root.lengthBeats / 4.0) * root.barWidth) : Math.max(24, (root.lengthBeats / 4.0) * root.barWidth)
+        value: root.isLiveRecording ? AudioEngine.beatToPixel(root.lengthBeats, root.barWidth) : Math.max(24, AudioEngine.beatToPixel(root.lengthBeats, root.barWidth))
     }
 
     // ── CONTENEDOR VISUAL DEL CLIP ──
@@ -68,7 +65,6 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
 
-                // Indicador parpadeante de grabación en vivo
                 Rectangle {
                     width: 8; height: 8; radius: 4
                     color: "#FFFFFF"
@@ -93,7 +89,6 @@ Item {
                 }
             }
 
-            // Botón Borrar Clip (✕) - oculto durante grabación activa
             Text {
                 anchors.right: parent.right
                 anchors.rightMargin: 8
@@ -115,7 +110,6 @@ Item {
             }
         }
 
-        // 🎨 FORMA DE ONDA REAL O ANIMACIÓN EN VIVO AL GRABAR
         NovaWaveformItem {
             anchors.left: parent.left
             anchors.right: parent.right
@@ -127,7 +121,6 @@ Item {
             visible: !root.isLiveRecording
         }
 
-        // Animación de ondas rojas en vivo durante la grabación (protegida para anchos pequeños)
         Item {
             anchors.left: parent.left
             anchors.right: parent.right
@@ -199,15 +192,15 @@ Item {
                 }
 
                 onReleased: {
-                    var pixelsPerBeat = root.barWidth / 4.0
-                    var rawBeat = root.x / pixelsPerBeat
+                    var rawBeat = AudioEngine.pixelToBeat(root.x, root.barWidth)
                     var snappedBeat = Math.max(0, Math.round(rawBeat / root.snapGridBeats) * root.snapGridBeats)
                     
-                    var deltaBeat = snappedBeat - (root.x / pixelsPerBeat)
-                    var newLengthBeats = Math.max(0.5, (root.width / pixelsPerBeat) - deltaBeat)
+                    var currentLengthBeats = AudioEngine.pixelToBeat(root.width, root.barWidth)
+                    var deltaBeat = snappedBeat - rawBeat
+                    var newLengthBeats = Math.max(0.5, currentLengthBeats - deltaBeat)
 
-                    root.x = (snappedBeat / 4.0) * root.barWidth
-                    root.width = (newLengthBeats / 4.0) * root.barWidth
+                    root.x = AudioEngine.beatToPixel(snappedBeat, root.barWidth)
+                    root.width = AudioEngine.beatToPixel(newLengthBeats, root.barWidth)
 
                     AudioEngine.regions.resizeRegion(index, snappedBeat, newLengthBeats)
                 }
@@ -252,8 +245,7 @@ Item {
                 }
 
                 onReleased: {
-                    var pixelsPerBeat = root.barWidth / 4.0
-                    var newLengthBeats = Math.max(0.5, root.width / pixelsPerBeat)
+                    var newLengthBeats = Math.max(0.5, AudioEngine.pixelToBeat(root.width, root.barWidth))
                     AudioEngine.regions.resizeRegion(index, root.startBeat, newLengthBeats)
                 }
             }
@@ -280,11 +272,10 @@ Item {
             }
 
             onReleased: {
-                var pixelsPerBeat = root.barWidth / 4.0
-                var rawBeat = root.x / pixelsPerBeat
+                var rawBeat = AudioEngine.pixelToBeat(root.x, root.barWidth)
                 var snappedBeat = Math.max(0, Math.round(rawBeat / root.snapGridBeats) * root.snapGridBeats)
 
-                root.x = (snappedBeat / 4.0) * root.barWidth
+                root.x = AudioEngine.beatToPixel(snappedBeat, root.barWidth)
                 AudioEngine.regions.moveRegion(index, snappedBeat)
             }
         }
@@ -311,11 +302,10 @@ Item {
             font.pixelSize: 11
             font.bold: true
             text: {
-                var pixelsPerBeat = root.barWidth / 4.0
-                var currentBeats = (root.x / pixelsPerBeat)
+                var currentBeats = AudioEngine.pixelToBeat(root.x, root.barWidth)
                 var bar = 1 + Math.floor(currentBeats / 4.0)
                 var beat = 1 + Math.floor(currentBeats % 4.0)
-                var durationBeats = (root.width / pixelsPerBeat).toFixed(1)
+                var durationBeats = AudioEngine.pixelToBeat(root.width, root.barWidth).toFixed(1)
                 return "Compás " + bar + " : Beat " + beat + "  (" + durationBeats + " b)";
             }
         }

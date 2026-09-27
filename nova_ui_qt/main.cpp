@@ -9,17 +9,21 @@
 #include <QDebug>
 #include <QTimer>
 #include <QWindow>
+#include <QLoggingCategory>
 
 #include "src/NovaAudioEngine.h"
-#include "src/views/NovaWaveformItem.h" // 🎨 Ruta modular corregida
+#include "src/views/NovaWaveformItem.h"
 
 int main(int argc, char *argv[])
 {
+    // 🎨 FORMATO PROFESIONAL DE LOGS EN CONSOLA
+    qSetMessagePattern("[%{time hh:mm:ss.zzz}] [%{type}] [%{category}] %{message}");
+
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
     qputenv("QML_DISABLE_DISK_CACHE", "1");
 
     QGuiApplication app(argc, argv);
-    app.setQuitOnLastWindowClosed(false);
+    app.setQuitOnLastWindowClosed(true); // 🔒 Cierre limpio al cerrar la ventana (evita procesos zombi)
 
     // 🎨 REGISTRAR EL TIPO QML NATIVO PARA FORMAS DE ONDA (NovaStudio 1.0)
     qmlRegisterType<NovaWaveformItem>("NovaStudio", 1, 0, "NovaWaveformItem");
@@ -98,7 +102,6 @@ int main(int argc, char *argv[])
             }
 
             engine.clearComponentCache();
-            // Mantener el contexto de AudioEngine tras la recarga
             engine.rootContext()->setContextProperty("AudioEngine", &audioEngine);
             addAllPaths();
 
@@ -134,5 +137,5 @@ int main(int argc, char *argv[])
             return -1;
     }
 
-    return app.exec(); 
+    return app.exec();
 }

@@ -1,4 +1,5 @@
 #include "NovaSessionManager.h"
+#include "NovaLogging.h"
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -52,7 +53,7 @@ NovaSessionManager::~NovaSessionManager()
 
 bool NovaSessionManager::initSession()
 {
-    qDebug() << "⚡ [SESSION MANAGER] Inicializando subsistemas PBD y Ardour Core...";
+    qCDebug(novaCore) << "Inicializando subsistemas PBD y Ardour Core...";
 
     QString rootDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../..");
     if (qEnvironmentVariableIsEmpty("ARDOUR_CONFIG_PATH")) {
@@ -60,7 +61,7 @@ bool NovaSessionManager::initSession()
     }
 
     if (!PBD::init()) {
-        qCritical() << "❌ [SESSION MANAGER] Fallo al inicializar PBD";
+        qCCritical(novaCore) << "Fallo al inicializar PBD.";
         return false;
     }
 
@@ -68,9 +69,9 @@ bool NovaSessionManager::initSession()
 
     try {
         ARDOUR::SessionEvent::create_per_thread_pool("NovaUI", 1024);
-        qDebug() << "✅ [SESSION MANAGER] Piscina lock-free inicializada";
-    } catch (std::exception &e) {
-        qCritical() << "❌ [SESSION MANAGER] Error en piscina de eventos:" << e.what();
+        qCDebug(novaCore) << "Piscina lock-free inicializada.";
+    } catch (const std::exception &e) {
+        qCCritical(novaCore) << "Error en piscina de eventos:" << e.what();
         return false;
     }
 
@@ -80,35 +81,35 @@ bool NovaSessionManager::initSession()
 
     m_engine = ARDOUR::AudioEngine::create();
     if (!m_engine) {
-        qCritical() << "❌ [SESSION MANAGER] Imposible instanciar ARDOUR::AudioEngine";
+        qCCritical(novaCore) << "Imposible instanciar ARDOUR::AudioEngine.";
         return false;
     }
 
     std::shared_ptr<ARDOUR::AudioBackend> backend = m_engine->set_backend("None (Dummy)", "NOVA-Studio", "");
     if (!backend) {
-        qCritical() << "❌ [SESSION MANAGER] Imposible cargar backend Dummy";
+        qCCritical(novaCore) << "Imposible cargar backend Dummy (None (Dummy)).";
         return false;
     }
 
     backend->set_driver("Realtime");
     backend->set_sample_rate(44100.0f);
     backend->set_buffer_size(512);
-    qDebug() << "✅ [SESSION MANAGER] Backend Dummy 44.1kHz / 512 samples";
+    qCDebug(novaCore) << "Backend None (Dummy) 44.1kHz / 512 samples activo.";
 
     if (m_engine->start() != 0) {
-        qCritical() << "❌ [SESSION MANAGER] Fallo al arrancar ARDOUR::AudioEngine";
+        qCCritical(novaCore) << "Fallo al arrancar ARDOUR::AudioEngine.";
         return false;
     }
-    qDebug() << "✅ [SESSION MANAGER] Engine arrancado:" << QString::fromStdString(m_engine->current_backend_name());
+    qCDebug(novaCore) << "Engine arrancado:" << QString::fromStdString(m_engine->current_backend_name());
 
     QString basePath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(basePath);
     QString sessionDir = basePath + "/DefaultSession";
     QString stateFile = sessionDir + "/DefaultSession.ardour";
 
-    // 🔒 Limpieza de sesión incompleta/corrupta (igual que antes de modularizar)
+    // 🔒 Limpieza de sesión incompleta/corrupta
     if (QDir(sessionDir).exists() && !QFileInfo::exists(stateFile)) {
-        qWarning() << "⚠️ [SESSION MANAGER] Sesión incompleta detectada, limpiando:" << sessionDir;
+        qCWarning(novaCore) << "Sesión incompleta detectada, limpiando:" << sessionDir;
         QDir(sessionDir).removeRecursively();
     }
 
@@ -122,14 +123,14 @@ bool NovaSessionManager::initSession()
         // Asegurar playhead en 0 al arrancar
         m_session->request_locate(0);
 
-        qDebug() << "✅ [SESSION MANAGER] ARDOUR::Session activa en:" << sessionDir;
+        qCDebug(novaCore) << "ARDOUR::Session activa en:" << sessionDir;
         Q_EMIT sessionInitialized(m_session);
         return true;
-    } catch (std::exception &e) {
-        qCritical() << "❌ [SESSION MANAGER] Excepción al crear la sesión:" << e.what();
+    } catch (const std::exception &e) {
+        qCCritical(novaCore) << "Excepción al crear la sesión:" << e.what();
         return false;
     } catch (...) {
-        qCritical() << "❌ [SESSION MANAGER] Error desconocido al crear la sesión";
+        qCCritical(novaCore) << "Error desconocido al crear la sesión.";
         return false;
     }
 }

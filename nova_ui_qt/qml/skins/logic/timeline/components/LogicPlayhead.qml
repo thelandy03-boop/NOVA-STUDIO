@@ -8,7 +8,7 @@ Item {
     property real barWidth: 80.0
     property bool isDragging: headMouseArea.pressed
 
-    // 🔒 Posición X blindada: nunca puede ser menor a 0 en el Timeline (Compás 1 Beat 1)
+    // 🔒 Posición X blindada usando helpers C++
     x: isDragging ? (dragScreenX - 12) : (Math.max(0, root.timelineX) - root.contentX - 12)
     property real dragScreenX: 0
 
@@ -42,7 +42,7 @@ Item {
         antialiasing: true
     }
 
-    // 3. Área interactiva con tope a la izquierda
+    // 3. Área interactiva con helper C++ pixelToBeat
     MouseArea {
         id: headMouseArea
         anchors.top: parent.top
@@ -59,9 +59,8 @@ Item {
 
         onReleased: {
             if (typeof AudioEngine !== "undefined") {
-                var pixelsPerBeat = root.barWidth / 4.0
                 var timelinePixelX = Math.max(0, (root.x + 12) + root.contentX)
-                var targetBeat = timelinePixelX / pixelsPerBeat
+                var targetBeat = AudioEngine.pixelToBeat(timelinePixelX, root.barWidth)
                 AudioEngine.locateBeat(targetBeat)
             }
         }
@@ -73,14 +72,10 @@ Item {
             if (!parentContainer) return;
 
             var screenPt = mapToItem(parentContainer, mouse.x, mouse.y)
-            
-            // 🛑 TOPE ESTRICTO: timelinePixelX NUNCA puede ser menor a 0
             var timelinePixelX = Math.max(0, screenPt.x + root.contentX)
             root.dragScreenX = timelinePixelX - root.contentX
 
-            var pixelsPerBeat = root.barWidth / 4.0
-            var targetBeat = timelinePixelX / pixelsPerBeat
-
+            var targetBeat = AudioEngine.pixelToBeat(timelinePixelX, root.barWidth)
             AudioEngine.locateBeat(targetBeat)
         }
     }

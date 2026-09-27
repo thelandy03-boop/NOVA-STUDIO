@@ -1,4 +1,5 @@
 #include "NovaRecordManager.h"
+#include "NovaLogging.h"
 #include "../models/NovaRegionModel.h"
 #include "NovaTransportController.h"
 #include <QDebug>
@@ -51,13 +52,12 @@ void NovaRecordManager::setTransportController(NovaTransportController *transpor
 void NovaRecordManager::toggleRecord()
 {
     if (!m_session) {
-        qWarning() << "❌ [RECORD] Sin sesión activa.";
+        qCWarning(novaRecord) << "Sin sesión activa.";
         return;
     }
 
     const bool alreadyRecording = m_isRecording || m_session->get_record_enabled() || m_liveRegionActive;
 
-    // 🔴 SEGUNDO TOQUE: Desarmar + Detener Transporte (Stop)
     if (alreadyRecording) {
         m_session->disable_record(false, false);
         m_isRecording = false;
@@ -72,11 +72,10 @@ void NovaRecordManager::toggleRecord()
         }
 
         Q_EMIT isRecordingChanged();
-        qDebug() << "🔴 [RECORD] Grabación detenida limpiamente (STOP).";
+        qCDebug(novaRecord) << "Grabación detenida limpiamente (STOP).";
         return;
     }
 
-    // 🔴 PRIMER TOQUE: Armar Pista + Armar Sesión + Iniciar Marcha (ROLL)
     bool anyArmed = false;
     if (auto routes = m_session->get_routes()) {
         for (auto &route : *routes) {
@@ -90,7 +89,6 @@ void NovaRecordManager::toggleRecord()
             }
         }
 
-        // Si el usuario no armó ninguna pista manualmente, armar la primera disponible
         if (!anyArmed) {
             for (auto &route : *routes) {
                 if (!route || !route->is_track()) continue;
@@ -99,7 +97,7 @@ void NovaRecordManager::toggleRecord()
                 auto rec = track->rec_enable_control();
                 if (rec) {
                     rec->set_value(1.0, PBD::Controllable::NoGroup);
-                    qDebug() << "🔴 [RECORD] Auto-arm de seguridad en pista:" << QString::fromStdString(track->name());
+                    qCDebug(novaRecord) << "Auto-arm de seguridad en pista:" << QString::fromStdString(track->name());
                     anyArmed = true;
                     break;
                 }
@@ -116,7 +114,7 @@ void NovaRecordManager::toggleRecord()
     }
 
     Q_EMIT isRecordingChanged();
-    qDebug() << "🔴 [RECORD] Grabación en vivo iniciada (ROLL).";
+    qCDebug(novaRecord) << "Grabación en vivo iniciada (ROLL).";
 }
 
 void NovaRecordManager::onPositionChanged()
@@ -132,10 +130,9 @@ void NovaRecordManager::onPositionChanged()
 
         if (m_regionModel) {
             m_regionModel->createLiveRecordingClip(m_recordStartBeat);
-            qDebug() << "🎙️ [RECORD] Clip de grabación en vivo creado en beat:" << m_recordStartBeat;
+            qCDebug(novaRecord) << "Clip de grabación en vivo creado en beat:" << m_recordStartBeat;
         }
     } else if (m_regionModel) {
-        // 🔒 Crecimiento puro desde 0.0 beats
         double lengthBeats = std::max(0.0, currentBeat - m_recordStartBeat);
         m_regionModel->updateLiveRecordingClip(lengthBeats);
     }
@@ -145,7 +142,7 @@ void NovaRecordManager::onTransportStopped()
 {
     if (!m_liveRegionActive && !m_isRecording) return;
 
-    qDebug() << "🔴 [RECORD] Transporte detenido. Finalizando clip en vivo...";
+    qCDebug(novaRecord) << "Transporte detenido. Finalizando clip en vivo...";
     m_liveRegionActive = false;
     m_isRecording = false;
 

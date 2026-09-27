@@ -1,10 +1,9 @@
-#pragma once
+#ifndef NOVASESSIONMANAGER_H
+#define NOVASESSIONMANAGER_H
 
 #include <QObject>
 #include <QString>
-#include <memory>
 
-// ── PROTECCIÓN CONTRA COLISIONES DE SEÑALES ARDOUR/QT ────────────────
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -15,8 +14,8 @@
 #undef foreach
 
 namespace ARDOUR {
-    class AudioEngine;
     class Session;
+    class AudioEngine;
 }
 
 #pragma pop_macro("emit")
@@ -34,13 +33,15 @@ public:
 
     bool initSession();
 
-    ARDOUR::AudioEngine* engine() const { return m_engine; }
     ARDOUR::Session* session() const { return m_session; }
+    ARDOUR::AudioEngine* engine() const { return m_engine; }
 
 signals:
     void sessionInitialized(ARDOUR::Session *session);
 
 private:
-    ARDOUR::AudioEngine *m_engine = nullptr;
     ARDOUR::Session *m_session = nullptr;
+    ARDOUR::AudioEngine *m_engine = nullptr;
 };
+
+#endif // NOVASESSIONMANAGER_H

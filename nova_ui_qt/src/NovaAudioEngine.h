@@ -7,6 +7,7 @@
 #include "core/NovaSessionManager.h"
 #include "core/NovaTransportController.h"
 #include "core/NovaRecordManager.h"
+#include "core/NovaTimeUtils.h"
 #include "models/NovaTrackListModel.h"
 #include "models/NovaRegionModel.h"
 
@@ -19,7 +20,7 @@ class NovaAudioEngine : public QObject
     Q_PROPERTY(QString timecode READ timecode NOTIFY timecodeChanged)
     Q_PROPERTY(QString bbt READ bbt NOTIFY bbtChanged)
     Q_PROPERTY(double currentFrame READ currentFrame NOTIFY positionChanged)
-    Q_PROPERTY(double currentBeat READ currentBeat NOTIFY positionChanged) // 🎯 PROPIEDAD CLAVE AÑADIDA
+    Q_PROPERTY(double currentBeat READ currentBeat NOTIFY positionChanged)
     Q_PROPERTY(double bpm READ bpm WRITE setBpm NOTIFY bpmChanged)
     
     Q_PROPERTY(NovaTrackListModel* tracks READ tracks NOTIFY tracksChanged)
@@ -31,9 +32,13 @@ class NovaAudioEngine : public QObject
 
 public:
     explicit NovaAudioEngine(QObject *parent = nullptr);
-    ~NovaAudioEngine() override = default;
+    ~NovaAudioEngine() override; // 🔒 Corrección: sin '= default' para permitir destructor personalizado en .cpp
 
     bool initEngine();
+
+    // 🎯 HELPER MATEMÁTICO EXPESTO A QML (Clean Code)
+    Q_INVOKABLE double beatToPixel(double beat, double barWidth = 80.0) const { return NovaTimeUtils::beatToPixel(beat, barWidth); }
+    Q_INVOKABLE double pixelToBeat(double pixelX, double barWidth = 80.0) const { return NovaTimeUtils::pixelToBeat(pixelX, barWidth); }
 
     Q_INVOKABLE void play() { m_transport.play(); }
     Q_INVOKABLE void stop() { m_transport.stop(); }
@@ -53,7 +58,7 @@ public:
     QString timecode() const { return m_transport.timecode(); }
     QString bbt() const { return m_transport.bbt(); }
     double currentFrame() const { return m_transport.currentFrame(); }
-    double currentBeat() const { return m_transport.currentBeat(); } // 🎯 GETTER EXPUESTO
+    double currentBeat() const { return m_transport.currentBeat(); }
     double bpm() const { return m_transport.bpm(); }
     
     NovaTrackListModel* tracks() const { return m_trackModel; }

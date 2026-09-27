@@ -1,4 +1,5 @@
 #include "NovaTransportController.h"
+#include "NovaLogging.h"
 #include <QDebug>
 #include <cmath>
 #include <algorithm>
@@ -33,7 +34,7 @@ void NovaTransportController::setSession(ARDOUR::Session *session)
     m_session = session;
     if (m_session) {
         m_updateTimer->start();
-        qDebug() << "✅ [TRANSPORT] Sesión vinculada, timer 60 FPS activo";
+        qCDebug(novaTransport) << "Sesión vinculada, timer 60 FPS activo.";
     } else {
         m_updateTimer->stop();
     }
@@ -47,14 +48,13 @@ void NovaTransportController::play()
     m_session->request_roll();
     m_isPlaying = true;
     Q_EMIT isPlayingChanged();
-    qDebug() << "▶️ [TRANSPORT] ROLL solicitado";
+    qCDebug(novaTransport) << "ROLL solicitado.";
 }
 
 void NovaTransportController::stop()
 {
     bool wasRolling = m_isPlaying || (m_session && (m_session->transport_rolling() || m_session->transport_speed() != 0.0));
 
-    // 🛑 FRENADO INMEDIATO DE TRANSPORTE
     m_isPlaying = false;
     Q_EMIT isPlayingChanged();
 
@@ -62,7 +62,7 @@ void NovaTransportController::stop()
         m_session->request_stop();
     }
 
-    qDebug() << "⏹️ [TRANSPORT] STOP";
+    qCDebug(novaTransport) << "STOP solicitado.";
 
     if (wasRolling) {
         Q_EMIT transportStoppedWasRecording();
@@ -72,7 +72,7 @@ void NovaTransportController::stop()
 void NovaTransportController::rewind()
 {
     locateFrame(0);
-    qDebug() << "⏮️ [TRANSPORT] REWIND -> 0";
+    qCDebug(novaTransport) << "REWIND a compás 1.";
 }
 
 void NovaTransportController::togglePlay()
@@ -91,7 +91,6 @@ void NovaTransportController::setBpm(double bpm)
     Q_EMIT bpmChanged();
 }
 
-// 🎯 REUBICACIÓN INSTANTÁNEA (SCRUBBING 0ms LAG BLINDADO)
 void NovaTransportController::locateFrame(double frame)
 {
     if (!m_session) return;
@@ -188,7 +187,6 @@ void NovaTransportController::updatePositionFromArdour()
 {
     if (!m_session) return;
 
-    // 🛡️ SI EL USUARIO PULSÓ STOP / PARÓ DE GRABAR: Congelar aguja inmediatamente
     if (!m_isPlaying) {
         m_locatePending = false;
         return;
@@ -197,11 +195,9 @@ void NovaTransportController::updatePositionFromArdour()
     ARDOUR::samplecnt_t sr = m_session->sample_rate() > 0 ? m_session->sample_rate() : 44100;
     ARDOUR::samplepos_t pos = m_session->transport_sample();
 
-    // 🚀 SINCRO EN TIEMPO REAL
     if (static_cast<double>(pos) > m_currentFrame) {
         m_currentFrame = static_cast<double>(pos);
     } else if (!m_locatePending) {
-        // Avance simulado a 60 FPS (16ms) mientras el transporte esté activo
         m_currentFrame += (static_cast<double>(sr) * 0.016);
     }
 

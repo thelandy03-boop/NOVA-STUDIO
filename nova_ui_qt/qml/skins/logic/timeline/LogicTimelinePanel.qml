@@ -11,13 +11,12 @@ Rectangle {
 
     property alias scrollY: gridFlickable.contentY
 
-    // CONEXIÓN DIRECTA CON C++ PARA SINCRO CON GRID Y REGLA
+    // 🧹 CONEXIÓN LIMPIA C++ PARA SINCRO DE AGUJA
     Connections {
         target: typeof AudioEngine !== "undefined" ? AudioEngine : null
 
         function onPositionChanged() {
-            var pixelsPerBeat = root.barWidth / 4.0; // 4/4 = 20px por beat
-            root.currentPlayheadX = AudioEngine.currentBeat * pixelsPerBeat;
+            root.currentPlayheadX = AudioEngine.beatToPixel(AudioEngine.currentBeat, root.barWidth);
         }
     }
 

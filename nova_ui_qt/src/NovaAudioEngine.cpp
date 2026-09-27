@@ -1,4 +1,5 @@
 #include "NovaAudioEngine.h"
+#include "core/NovaLogging.h"
 #include "models/NovaTrackListModel.h"
 #include "models/NovaRegionModel.h"
 #include "views/NovaWaveformItem.h"
@@ -29,9 +30,17 @@ NovaAudioEngine::NovaAudioEngine(QObject *parent)
     connect(&m_recorder, &NovaRecordManager::isRecordingChanged, this, &NovaAudioEngine::isRecordingChanged);
 }
 
+NovaAudioEngine::~NovaAudioEngine()
+{
+    qCDebug(novaCore) << "Destruyendo NovaAudioEngine... Cierre seguro de recursos.";
+    m_transport.setSession(nullptr);
+    m_recorder.setSession(nullptr);
+}
+
 bool NovaAudioEngine::initEngine()
 {
     if (!m_sessionManager.initSession()) {
+        qCCritical(novaCore) << "Fallo al inicializar la sesión de audio.";
         return false;
     }
 
@@ -49,6 +58,6 @@ bool NovaAudioEngine::initEngine()
     Q_EMIT tracksChanged();
     Q_EMIT regionsChanged();
 
-    qDebug() << "🚀 [NOVA ENGINE] Arquitectura Modular Inicializada con Éxito.";
+    qCDebug(novaCore) << "🚀 Arquitectura Modular Inicializada con Éxito.";
     return true;
 }
