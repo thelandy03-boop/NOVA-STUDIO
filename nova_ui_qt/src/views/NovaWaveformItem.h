@@ -1,59 +1,46 @@
-#pragma once
+#ifndef NOVA_WAVEFORM_ITEM_H
+#define NOVA_WAVEFORM_ITEM_H
 
 #include <QQuickPaintedItem>
 #include <QColor>
-#include <QPainter>
-#include <QPainterPath>
 #include <memory>
 
-// ── PROTECCIÓN CONTRA COLISIONES DE SEÑALES ARDOUR/QT ────────────────
-#pragma push_macro("emit")
-#pragma push_macro("slots")
-#pragma push_macro("signals")
-#pragma push_macro("foreach")
-#undef emit
-#undef slots
-#undef signals
-#undef foreach
+namespace ARDOUR {
+    class Session;
+}
 
-#include "ardour/session.h"
-#include "ardour/audioregion.h"
-#include "ardour/types.h" // 🎨 Definición real de PeakData
-
-#pragma pop_macro("emit")
-#pragma pop_macro("slots")
-#pragma pop_macro("signals")
-#pragma pop_macro("foreach")
-// ─────────────────────────────────────────────────────────────────────
-
-class NovaWaveformItem : public QQuickPaintedItem
-{
+class NovaWaveformItem : public QQuickPaintedItem {
     Q_OBJECT
     Q_PROPERTY(int regionIndex READ regionIndex WRITE setRegionIndex NOTIFY regionIndexChanged)
+    Q_PROPERTY(QString regionId READ regionId WRITE setRegionId NOTIFY regionIdChanged)
     Q_PROPERTY(QColor waveColor READ waveColor WRITE setWaveColor NOTIFY waveColorChanged)
 
 public:
     explicit NovaWaveformItem(QQuickItem *parent = nullptr);
-    ~NovaWaveformItem() override = default;
 
     int regionIndex() const { return m_regionIndex; }
     void setRegionIndex(int index);
 
+    QString regionId() const { return m_regionId; }
+    void setRegionId(const QString &id);
+
     QColor waveColor() const { return m_waveColor; }
     void setWaveColor(const QColor &color);
 
-    // QQuickPaintedItem override
-    void paint(QPainter *painter) override;
-
     static void setSession(ARDOUR::Session *session) { s_session = session; }
 
-signals:
+    void paint(QPainter *painter) override;
+
+Q_SIGNALS:
     void regionIndexChanged();
+    void regionIdChanged();
     void waveColorChanged();
 
 private:
     int m_regionIndex = -1;
-    QColor m_waveColor = QColor("#A0FFFFFF");
-
+    QString m_regionId;
+    QColor m_waveColor = QColor(255, 255, 255);
     static inline ARDOUR::Session *s_session = nullptr;
 };
+
+#endif // NOVA_WAVEFORM_ITEM_H

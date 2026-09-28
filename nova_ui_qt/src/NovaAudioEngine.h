@@ -32,6 +32,11 @@ class NovaAudioEngine : public QObject
     Q_PROPERTY(double loopStartBeat READ loopStartBeat NOTIFY loopRangeChanged)
     Q_PROPERTY(double loopEndBeat READ loopEndBeat NOTIFY loopRangeChanged)
 
+    // 🎛️ MEDIDOR MASTER ESTÉREO FL STUDIO (Picos L/R + Volumen Master)
+    Q_PROPERTY(float masterPeakLeft READ masterPeakLeft NOTIFY masterPeaksChanged)
+    Q_PROPERTY(float masterPeakRight READ masterPeakRight NOTIFY masterPeaksChanged)
+    Q_PROPERTY(float masterVolumeDb READ masterVolumeDb WRITE setMasterVolumeDb NOTIFY masterVolumeDbChanged)
+
 public:
     explicit NovaAudioEngine(QObject *parent = nullptr);
     ~NovaAudioEngine() override;
@@ -70,6 +75,12 @@ public:
     double loopStartBeat() const { return m_transport.loopStartBeat(); }
     double loopEndBeat() const { return m_transport.loopEndBeat(); }
 
+    // 🎙️ Picos Master y Fader General
+    float masterPeakLeft() const;
+    float masterPeakRight() const;
+    float masterVolumeDb() const;
+    Q_INVOKABLE void setMasterVolumeDb(float dB);
+
 signals:
     void isPlayingChanged();
     void isRecordingChanged();
@@ -81,6 +92,8 @@ signals:
     void regionsChanged();
     void loopEnabledChanged();
     void loopRangeChanged();
+    void masterPeaksChanged();
+    void masterVolumeDbChanged();
 
 private:
     NovaSessionManager m_sessionManager;

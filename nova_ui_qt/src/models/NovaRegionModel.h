@@ -35,6 +35,7 @@
 struct PeakPoint {
     float min = 0.0f;
     float max = 0.0f;
+    float rms = 0.0f; // 🚀 Energía acumulada RMS para textura HD
 };
 
 // 🚀 Sistema Centralizado de Caché de Picos en RAM

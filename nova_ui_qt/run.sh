@@ -1,22 +1,16 @@
 #!/bin/bash
-export QT_QPA_PLATFORM=xcb
+ROOT_DIR="$(cd .. && pwd)"
 
-NOVA_BUILD_DIR="/home/landy/Descargas/NOVA-STUDIO/build"
-NOVA_BUILD_LIBS="$NOVA_BUILD_DIR/libs"
+# Buscar automáticamente todas las rutas con librerías .so dentro de build/
+ALL_LIBS=$(find "${ROOT_DIR}/build" -type f -name "*.so*" -exec dirname {} \; | sort -u | tr '\n' ':')
 
-# 🎯 Rutas de librerías y dependencias de Ardour
-export ARDOUR_DLL_PATH="$NOVA_BUILD_LIBS/backends:$NOVA_BUILD_LIBS/ardour:$NOVA_BUILD_LIBS/pbd"
-export ARDOUR_BACKEND_PATH="$NOVA_BUILD_LIBS/backends/jack:$NOVA_BUILD_LIBS/backends/alsa:$NOVA_BUILD_LIBS/backends/dummy"
+export ARDOUR_DLL_PATH="${ROOT_DIR}/build/libs/backends:${ROOT_DIR}/build/libs/ardour:${ROOT_DIR}/build/libs/pbd"
+export ARDOUR_BACKEND_PATH="${ROOT_DIR}/build/libs/backends/jack:${ROOT_DIR}/build/libs/backends/alsa:${ROOT_DIR}/build/libs/backends/dummy"
+export ARDOUR_PANNER_PATH="${ROOT_DIR}/build/libs/panners"
+export LD_LIBRARY_PATH="${ALL_LIBS}${LD_LIBRARY_PATH}"
 
-# 🚀 NUEVA RUTA REQUERIDA: Localización de los paneadores internos de audio
-export ARDOUR_PANNER_PATH="$NOVA_BUILD_LIBS/panners"
+# 🎯 Calibrar entrada de micrófono de Linux al 45% (nivel limpio sin distorsión)
+amixer sset Capture 45% >/dev/null 2>&1 || wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.45 >/dev/null 2>&1
 
-export LD_LIBRARY_PATH="$NOVA_BUILD_LIBS/ardour:$NOVA_BUILD_LIBS/pbd:$NOVA_BUILD_LIBS/temporal:$NOVA_BUILD_LIBS/evoral:$NOVA_BUILD_LIBS/midi++2:$NOVA_BUILD_LIBS/fst:$NOVA_BUILD_LIBS/tk/suil:$NOVA_BUILD_LIBS/audiographer:$NOVA_BUILD_LIBS/ardouralsautil:$NOVA_BUILD_LIBS/backends/jack:$NOVA_BUILD_LIBS/backends/alsa:$NOVA_BUILD_LIBS/backends/dummy:$LD_LIBRARY_PATH"
-
-if command -v pw-jack >/dev/null 2>&1; then
-    echo "🔊 Ejecutando con PipeWire-JACK Wrapper (pw-jack)..."
-    exec pw-jack ./build/nova_ui_qt "$@"
-else
-    echo "🚀 Ejecutando de forma directa..."
-    exec ./build/nova_ui_qt "$@"
-fi
+echo "🔊 Ejecutando NOVA STUDIO con PipeWire-JACK y Entrada Calibrada..."
+exec pw-jack ./build/nova_ui_qt

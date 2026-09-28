@@ -110,6 +110,7 @@ Item {
             }
         }
 
+        // 🎙️ WAVEFORM REAL 100% ACTIVA EN TIEMPO REAL (Tanto en reproducción como en Grabación)
         NovaWaveformItem {
             anchors.left: parent.left
             anchors.right: parent.right
@@ -117,34 +118,9 @@ Item {
             anchors.topMargin: 18
             anchors.bottom: parent.bottom
             regionIndex: model.index
-            waveColor: "#E0FFFFFF"
-            visible: !root.isLiveRecording
-        }
-
-        Item {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.topMargin: 20
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 4
-            visible: root.isLiveRecording
-            clip: true
-
-            Row {
-                anchors.centerIn: parent
-                spacing: 2
-                Repeater {
-                    model: Math.max(0, Math.min(80, Math.floor(root.width / 3)))
-                    Rectangle {
-                        width: 2
-                        height: (index % 4 === 0 ? 32 : (index % 2 === 0 ? 20 : 12))
-                        color: "#FFFFFF"
-                        opacity: 0.85
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-            }
+            regionId: model.regionId || ""
+            waveColor: "#FFFFFF"
+            visible: true
         }
 
         // ── TIRADOR IZQUIERDO ──

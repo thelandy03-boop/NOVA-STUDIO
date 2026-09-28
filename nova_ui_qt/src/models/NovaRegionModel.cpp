@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QUrl>
+#include <QTimer>
 #include <algorithm>
 #include <cmath>
 #include <thread>
@@ -22,6 +23,7 @@
 
 #include "ardour/audioengine.h"
 #include "ardour/audio_track.h"
+#include "ardour/audiofilesource.h"
 #include "ardour/audioregion.h"
 #include "ardour/audiosource.h"
 #include "ardour/source_factory.h"
@@ -36,11 +38,26 @@
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
 
-// 🚀 CONSTRUCTOR DE PICOS ULTRA-DEFINIDO (4,000 PUNTOS DE RESOLUCIÓN HD)
+// 🎛️ SOFT CLIPPER ANALÓGICO TRANSPARENTE (CERO ALLOCATIONS EN THREAD RT)
+// Mantiene 100% linealidad hasta 0.8f (-1.92 dBFS) y comprime suavemente hacia 1.0f
+inline float applySoftClip(float x) noexcept
+{
+    constexpr float threshold = 0.8f;
+    constexpr float margin = 0.2f;
+
+    if (x > threshold) {
+        return threshold + margin * std::tanh((x - threshold) / margin);
+    } else if (x < -threshold) {
+        return -(threshold + margin * std::tanh((-x - threshold) / margin));
+    }
+    return x;
+}
+
+// 🚀 CONSTRUCTOR DE PICOS ULTRA-DEFINIDO (4,000 PUNTOS DE RESOLUCIÓN HD + RMS + SOFT CLIP)
 static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::AudioRegion> &region,
                                                size_t pointCount = 4000)
 {
-    std::vector<PeakPoint> result(pointCount, PeakPoint{0.0f, 0.0f});
+    std::vector<PeakPoint> result(pointCount, PeakPoint{0.0f, 0.0f, 0.0f});
     if (!region || pointCount == 0 || region->n_channels() == 0) return result;
 
     const auto length = region->length_samples();
@@ -51,7 +68,7 @@ static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::Aud
         if (!source) continue;
 
         constexpr ARDOUR::samplecnt_t bufferSize = 8192;
-        std::vector<ARDOUR::Sample> buffer(static_cast<size_t>(bufferSize));
+        std::vector<ARDOUR::Sample> buffer(static_cast<size_t>(bufferSize), 0.0f);
 
         const ARDOUR::samplecnt_t baseSamples = length / static_cast<ARDOUR::samplecnt_t>(pointCount);
         const ARDOUR::samplecnt_t remainder = length % static_cast<ARDOUR::samplecnt_t>(pointCount);
@@ -66,6 +83,8 @@ static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::Aud
             auto cursor = first;
             float low = 0.0f;
             float high = 0.0f;
+            double sumSquares = 0.0;
+            ARDOUR::samplecnt_t sampleCount = 0;
             bool foundSample = false;
 
             while (remaining > 0) {
@@ -74,7 +93,13 @@ static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::Aud
                 if (read <= 0) break;
 
                 for (ARDOUR::samplecnt_t sample = 0; sample < read; ++sample) {
-                    const float value = std::clamp(static_cast<float>(buffer[static_cast<size_t>(sample)]), -1.0f, 1.0f);
+                    // Soft Clipper preventivo en lugar de Hard Clamp
+                    const float rawValue = static_cast<float>(buffer[static_cast<size_t>(sample)]);
+                    const float value = applySoftClip(rawValue);
+
+                    sumSquares += static_cast<double>(value * value);
+                    sampleCount++;
+
                     if (!foundSample) {
                         low = high = value;
                         foundSample = true;
@@ -88,11 +113,13 @@ static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::Aud
             }
 
             if (foundSample) {
+                float calculatedRms = (sampleCount > 0) ? std::sqrt(static_cast<float>(sumSquares / sampleCount)) : 0.0f;
                 if (channel == 0) {
-                    result[i] = {low, high};
+                    result[i] = {low, high, calculatedRms};
                 } else {
                     result[i].min = std::min(result[i].min, low);
                     result[i].max = std::max(result[i].max, high);
+                    result[i].rms = std::max(result[i].rms, calculatedRms);
                 }
             }
         }
@@ -203,14 +230,13 @@ QHash<int, QByteArray> NovaRegionModel::roleNames() const
     };
 }
 
-// 🚀 PERSISTENCIA BINARIA .novapeak (Versión 4 para descartar cachés viejas)
 bool NovaRegionModel::savePeakFile(const QString &peakFilePath, const std::vector<PeakPoint> &peaks)
 {
     std::ofstream out(peakFilePath.toStdString(), std::ios::binary);
     if (!out.is_open()) return false;
 
     out.write("NOVA", 4);
-    uint32_t version = 4; // 🎯 BUMP A VERSIÓN 4
+    uint32_t version = 5;
     uint32_t numPeaks = static_cast<uint32_t>(peaks.size());
 
     out.write(reinterpret_cast<const char*>(&version), sizeof(version));
@@ -234,7 +260,7 @@ bool NovaRegionModel::loadPeakFile(const QString &peakFilePath, std::vector<Peak
     in.read(reinterpret_cast<char*>(&version), sizeof(version));
     in.read(reinterpret_cast<char*>(&numPeaks), sizeof(numPeaks));
 
-    if (version != 4 || numPeaks == 0 || numPeaks > 100000) return false;
+    if (version != 5 || numPeaks == 0 || numPeaks > 100000) return false;
 
     outPeaks.resize(numPeaks);
     in.read(reinterpret_cast<char*>(outPeaks.data()), numPeaks * sizeof(PeakPoint));
@@ -461,23 +487,100 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
 {
     if (m_liveRecordingIndex < 0 || m_liveRecordingIndex >= static_cast<int>(m_regions.size())) return;
 
-    m_regions[static_cast<size_t>(m_liveRecordingIndex)].lengthBeats = lengthBeats;
+    auto &item = m_regions[static_cast<size_t>(m_liveRecordingIndex)];
+    item.lengthBeats = lengthBeats;
+
+    // 🚀 LECTURA EN TIEMPO REAL DE MUESTRAS PCM CON AUTO-GAIN & SOFT CLIP
+    if (m_session) {
+        auto routeList = m_session->get_routes();
+        if (routeList) {
+            for (auto &route : *routeList) {
+                if (route && route->is_track()) {
+                    auto track = std::dynamic_pointer_cast<ARDOUR::AudioTrack>(route);
+                    if (track) {
+                        auto rec = track->rec_enable_control();
+                        if (rec && rec->get_value() != 0.0f) {
+                            auto source = track->write_source(0);
+                            if (source) {
+                                ARDOUR::samplecnt_t length = source->length().samples();
+                                if (length > 200) {
+                                    constexpr size_t pointCount = 1000;
+                                    std::vector<PeakPoint> livePeaks(pointCount, PeakPoint{0.0f, 0.0f, 0.0f});
+                                    
+                                    constexpr ARDOUR::samplecnt_t bufferSize = 4096;
+                                    std::vector<ARDOUR::Sample> buffer(static_cast<size_t>(bufferSize), 0.0f);
+                                    
+                                    const ARDOUR::samplecnt_t baseSamples = length / static_cast<ARDOUR::samplecnt_t>(pointCount);
+                                    
+                                    if (baseSamples > 0) {
+                                        // 🎙️ AUTO-GAIN TRIM PREVENTIVO (BandLab Style)
+                                        // 1. Escaneo rápido de pico máximo raw en la ventana
+                                        float maxRawPeak = 0.0001f;
+                                        for (size_t i = 0; i < pointCount; ++i) {
+                                            const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples;
+                                            const auto read = source->read(buffer.data(), first, std::min(baseSamples, bufferSize), 0);
+                                            for (ARDOUR::samplecnt_t s = 0; s < read; ++s) {
+                                                float absV = std::abs(static_cast<float>(buffer[static_cast<size_t>(s)]));
+                                                if (absV > maxRawPeak) maxRawPeak = absV;
+                                            }
+                                        }
+
+                                        // 2. Si el pico supera -1 dBFS (0.891f), calcular factor de atenuación
+                                        float autoGainScale = 1.0f;
+                                        constexpr float safeThreshold = 0.891f; // -1 dBFS
+                                        constexpr float targetHeadroom = 0.5f;  // -6 dBFS
+
+                                        if (maxRawPeak > safeThreshold) {
+                                            autoGainScale = targetHeadroom / maxRawPeak;
+                                        }
+
+                                        // 3. Procesamiento con Trim Preventivo + Soft Clip
+                                        for (size_t i = 0; i < pointCount; ++i) {
+                                            const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples;
+                                            const auto read = source->read(buffer.data(), first, std::min(baseSamples, bufferSize), 0);
+                                            if (read <= 0) break;
+
+                                            float low = 0.0f, high = 0.0f;
+                                            bool found = false;
+                                            for (ARDOUR::samplecnt_t s = 0; s < read; ++s) {
+                                                // Aplicar Auto-Gain Scale + Soft Clipper
+                                                float scaledValue = static_cast<float>(buffer[static_cast<size_t>(s)]) * autoGainScale;
+                                                float v = applySoftClip(scaledValue);
+
+                                                if (!found) { low = high = v; found = true; }
+                                                else {
+                                                    if (v < low) low = v;
+                                                    if (v > high) high = v;
+                                                }
+                                            }
+                                            if (found) {
+                                                livePeaks[i] = {low, high, 0.0f};
+                                            }
+                                        }
+                                        NovaWaveformCache::setPeaks(item.id, livePeaks);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Q_EMIT dataChanged(index(m_liveRecordingIndex), index(m_liveRecordingIndex), {LengthBeatsRole});
 }
 
 void NovaRegionModel::finalizeLiveRecordingClip()
 {
-    if (m_liveRecordingIndex >= 0 && m_liveRecordingIndex < static_cast<int>(m_regions.size())) {
-        auto &item = m_regions[static_cast<size_t>(m_liveRecordingIndex)];
-        item.isLiveRecording = false;
-        item.name = QStringLiteral("Audio Take %1").arg(m_liveRecordingIndex + 1);
-        item.color = QStringLiteral("#E74C3C");
+    qCDebug(novaModel) << "Finalizando clip de grabación en vivo y programando sincronización de sesión...";
 
-        Q_EMIT dataChanged(index(m_liveRecordingIndex), index(m_liveRecordingIndex), 
-                           {RegionNameRole, ColorRole, IsLiveRecordingRole});
-        qCDebug(novaModel) << "Clip grabado conservado permanentemente:" << item.name << "Duración beats:" << item.lengthBeats;
-    }
-    m_liveRecordingIndex = -1;
+    QTimer::singleShot(250, this, [this]() {
+        m_liveRecordingIndex = -1;
+        rebuildRegionCache();
+        qCDebug(novaModel) << "Sincronización diferida completada. Regiones en UI:" << m_regions.size();
+    });
 }
 
 void NovaRegionModel::rebuildRegionCache()
@@ -486,7 +589,7 @@ void NovaRegionModel::rebuildRegionCache()
 
     std::vector<NovaRegionItem> localPreservedClips;
     for (const auto &item : m_regions) {
-        if (!item.regionPtr && item.lengthBeats > 0.1) {
+        if (!item.regionPtr && item.lengthBeats > 0.1 && !item.isLiveRecording) {
             localPreservedClips.push_back(item);
         }
     }
@@ -525,7 +628,6 @@ void NovaRegionModel::rebuildRegionCache()
                         item.color = QStringLiteral("#4A90E2");
                         item.isLiveRecording = false;
 
-                        // 🚀 Carga ultra-rápida desde disco (.novapeak versión 4) a RAM
                         std::vector<PeakPoint> cachedPeaks;
                         if (!NovaWaveformCache::getPeaks(item.id, cachedPeaks)) {
                             QString peakFile = sessionPeaksDir + "/" + item.id + ".novapeak";

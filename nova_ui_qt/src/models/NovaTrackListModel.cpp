@@ -1,7 +1,7 @@
 #include "NovaTrackListModel.h"
 #include <QDebug>
-#include <algorithm>
 #include <cmath>
+#include <algorithm>
 
 #pragma push_macro("emit")
 #pragma push_macro("slots")
@@ -12,7 +12,9 @@
 #undef signals
 #undef foreach
 
-#include "ardour/audioengine.h"
+#include "ardour/session.h"
+#include "ardour/route.h"
+#include "ardour/track.h"
 #include "ardour/audio_track.h"
 #include "ardour/midi_track.h"
 #include "ardour/gain_control.h"
@@ -21,11 +23,26 @@
 #include "ardour/automation_control.h"
 #include "ardour/presentation_info.h"
 #include "ardour/types.h"
+#include "ardour/meter.h"
 
 #pragma pop_macro("emit")
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+
+// 🎛️ SOFT CLIPPER ANALÓGICO TRANSPARENTE
+inline float applySoftClip(float x) noexcept
+{
+    constexpr float threshold = 0.8f;
+    constexpr float margin = 0.2f;
+
+    if (x > threshold) {
+        return threshold + margin * std::tanh((x - threshold) / margin);
+    } else if (x < -threshold) {
+        return -(threshold + margin * std::tanh((-x - threshold) / margin));
+    }
+    return x;
+}
 
 NovaTrackListModel::NovaTrackListModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -34,24 +51,52 @@ NovaTrackListModel::NovaTrackListModel(QObject *parent)
 
 NovaTrackListModel::~NovaTrackListModel()
 {
-    disconnectSessionSignals();
+    m_sessionConnections.drop_connections();
 }
 
 void NovaTrackListModel::setSession(ARDOUR::Session *session)
 {
-    if (m_session == session) return;
-
-    disconnectSessionSignals();
-
     beginResetModel();
     m_routes.clear();
     m_session = session;
     endResetModel();
 
     if (m_session) {
-        rebuildRouteCache();
-        connectSessionSignals();
+        m_sessionConnections.drop_connections();
+
+        m_session->RouteAdded.connect_same_thread(
+            m_sessionConnections,
+            [this](ARDOUR::RouteList & /*routes*/) {
+                syncWithArdour();
+            }
+        );
+
+        m_session->InstrumentRouteAdded.connect_same_thread(
+            m_sessionConnections,
+            [this](ARDOUR::RouteList & /*routes*/) {
+                syncWithArdour();
+            }
+        );
+
+        syncWithArdour();
     }
+}
+
+void NovaTrackListModel::syncWithArdour()
+{
+    if (!m_session) return;
+    auto routeList = m_session->get_routes();
+
+    beginResetModel();
+    m_routes.clear();
+    if (routeList) {
+        for (auto &route : *routeList) {
+            if (route && route->is_track()) {
+                m_routes.push_back(route);
+            }
+        }
+    }
+    endResetModel();
 
     Q_EMIT trackCountChanged(static_cast<int>(m_routes.size()));
 }
@@ -64,154 +109,112 @@ int NovaTrackListModel::rowCount(const QModelIndex &parent) const
 
 QVariant NovaTrackListModel::data(const QModelIndex &index, int role) const
 {
-    if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(m_routes.size()))
-        return {};
-
-    const auto &route = m_routes[static_cast<size_t>(index.row())];
+    if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(m_routes.size())) return {};
+    auto route = m_routes[static_cast<size_t>(index.row())];
     if (!route) return {};
 
     switch (role) {
-    case TrackIdRole:
-        return QString::fromStdString(route->id().to_s());
-
-    case TrackNameRole:
-        return QString::fromStdString(route->name());
-
+    case TrackNameRole: return QString::fromStdString(route->name());
     case TrackTypeRole:
         if (std::dynamic_pointer_cast<ARDOUR::AudioTrack>(route)) return QStringLiteral("audio");
         if (std::dynamic_pointer_cast<ARDOUR::MidiTrack>(route)) return QStringLiteral("midi");
         return QStringLiteral("bus");
-
     case GainRole: {
         auto gc = route->gain_control();
         if (gc) return coeffToDb(static_cast<float>(gc->get_value()));
         return 0.0f;
     }
-
+    case PanRole: {
+        auto panCtrl = route->pan_azimuth_control();
+        if (panCtrl) {
+            float val = static_cast<float>(panCtrl->get_value());
+            return (val * 2.0f) - 1.0f; // Ardour [0.0, 1.0] -> UI [-1.0, 1.0]
+        }
+        return 0.0f;
+    }
     case MuteRole: {
         auto mc = route->mute_control();
         if (mc) return mc->get_value() != 0.0f;
         return false;
     }
-
     case SoloRole: {
         auto sc = route->solo_control();
         if (sc) return sc->get_value() != 0.0f;
         return false;
     }
-
     case RecEnableRole: {
         auto track = std::dynamic_pointer_cast<ARDOUR::Track>(route);
-        if (track) {
-            auto rec = track->rec_enable_control();
-            if (rec) return rec->get_value() != 0.0f;
-        }
+        if (track && track->rec_enable_control()) return track->rec_enable_control()->get_value() != 0.0f;
         return false;
     }
-
-    case PanRole: {
-        auto panControl = route->pan_azimuth_control();
-        if (panControl) {
-            float ardourPan = static_cast<float>(panControl->get_value());
-            return (ardourPan - 0.5f) * 2.0f;
-        }
-        return 0.0f;
+    case PeakRole: {
+        return peakLevel(index.row());
     }
-
-    case ColorRole:
-        return QStringLiteral("#3498db");
-
-    default:
-        return {};
+    default: return {};
     }
 }
 
 QHash<int, QByteArray> NovaTrackListModel::roleNames() const
 {
     return {
-        { TrackIdRole, "trackId" },
-        { TrackNameRole, "trackName" },
-        { TrackTypeRole, "trackType" },
-        { GainRole, "gain" },
-        { MuteRole, "mute" },
-        { SoloRole, "solo" },
-        { RecEnableRole, "recEnable" },
-        { PanRole, "pan" },
-        { ColorRole, "trackColor" }
+        { TrackNameRole, "trackName"   },
+        { TrackTypeRole, "trackType"   },
+        { GainRole,      "gain"        },
+        { PanRole,       "pan"         },
+        { MuteRole,      "mute"        },
+        { SoloRole,      "solo"        },
+        { RecEnableRole, "recEnable"   },
+        { PeakRole,      "peakLevel"   }
     };
 }
 
 void NovaTrackListModel::addAudioTrack(const QString &name)
 {
-    if (!m_session) {
-        qWarning() << "❌ [NovaTracks] Imposible crear pista: No hay sesión de Ardour activa.";
-        return;
-    }
-
-    qDebug() << "⚡ [NovaTracks] Creando pista Audio Stereo en Ardour Core:" << name;
+    if (!m_session) return;
 
     ARDOUR::RouteList routes;
     ARDOUR::AudioTrackList tracks;
 
-    // API C++ nativa y estable para creación de AudioTracks
     bool ok = m_session->new_audio_routes_tracks_bulk(
         routes, tracks,
-        2, 2,                                // 2 Entradas / 2 Salidas (Stereo)
-        nullptr,                             // RouteGroup (ninguno)
-        1,                                   // Cantidad (1 pista)
-        name.toStdString(),                  // Nombre
-        ARDOUR::PresentationInfo::max_order, // Posición en orden
-        ARDOUR::Normal,                      // Modo de pista Normal
-        true,                                // Autoconectar entradas
-        false                                // Trigger visibility
+        1, 2,                                
+        nullptr, 1, name.toStdString(),
+        ARDOUR::PresentationInfo::max_order, ARDOUR::Normal, true, false
     );
 
     if (ok && !routes.empty()) {
         m_session->add_routes(routes, true, true, ARDOUR::PresentationInfo::max_order);
-        qDebug() << "✅ [NovaTracks] Pista de audio registrada exitosamente en la sesión. Total:" << routes.size();
-    } else {
-        qWarning() << "❌ [NovaTracks] new_audio_routes_tracks_bulk devolvió un resultado fallido.";
+        
+        for (auto &route : routes) {
+            if (route) {
+                if (auto track = std::dynamic_pointer_cast<ARDOUR::Track>(route)) {
+                    track->ensure_input_monitoring(false);
+                }
+                if (route->gain_control()) {
+                    route->gain_control()->set_value(1.0f, PBD::Controllable::NoGroup);
+                }
+            }
+        }
     }
 }
 
 void NovaTrackListModel::addMidiTrack(const QString &name)
 {
     if (!m_session) return;
-
-    qDebug() << "⚡ [NovaTracks] Creando pista MIDI en Ardour Core:" << name;
-
-    ARDOUR::RouteList rl = m_session->new_midi_route(
-        nullptr,
-        1,
-        name.toStdString(),
-        true,
-        nullptr,
-        nullptr,
-        ARDOUR::PresentationInfo::MidiTrack,
-        ARDOUR::PresentationInfo::max_order
-    );
-
-    if (!rl.empty()) {
-        m_session->add_routes(rl, true, true, ARDOUR::PresentationInfo::max_order);
-        qDebug() << "✅ [NovaTracks] Pista MIDI registrada exitosamente en la sesión.";
-    } else {
-        qWarning() << "❌ [NovaTracks] new_midi_route devolvió una lista vacía.";
-    }
+    ARDOUR::RouteList rl = m_session->new_midi_route(nullptr, 1, name.toStdString(), true, nullptr, nullptr, ARDOUR::PresentationInfo::MidiTrack, ARDOUR::PresentationInfo::max_order);
+    if (!rl.empty()) m_session->add_routes(rl, true, true, ARDOUR::PresentationInfo::max_order);
 }
 
 void NovaTrackListModel::removeTrack(int row)
 {
-    if (!m_session || row < 0 || row >= static_cast<int>(m_routes.size())) return;
-
+    if (row < 0 || row >= static_cast<int>(m_routes.size())) return;
     auto route = m_routes[static_cast<size_t>(row)];
-
-    beginRemoveRows(QModelIndex(), row, row);
-    m_routes.erase(m_routes.begin() + row);
-    endRemoveRows();
-
-    m_session->remove_route(route);
-    Q_EMIT trackCountChanged(static_cast<int>(m_routes.size()));
-    qDebug() << "🗑️ [NovaTracks] Pista eliminada:" << QString::fromStdString(route->name());
+    if (route && m_session) {
+        auto rl = std::make_shared<ARDOUR::RouteList>();
+        rl->push_back(route);
+        m_session->remove_routes(rl);
+        syncWithArdour();
+    }
 }
 
 void NovaTrackListModel::setGain(int row, float dB)
@@ -221,6 +224,17 @@ void NovaTrackListModel::setGain(int row, float dB)
     if (gc) {
         gc->set_value(dbToCoeff(dB), PBD::Controllable::NoGroup);
         Q_EMIT dataChanged(index(row), index(row), {GainRole});
+    }
+}
+
+void NovaTrackListModel::setPan(int row, float pan)
+{
+    if (row < 0 || row >= static_cast<int>(m_routes.size())) return;
+    auto panCtrl = m_routes[static_cast<size_t>(row)]->pan_azimuth_control();
+    if (panCtrl) {
+        float ardourPan = std::clamp((pan + 1.0f) * 0.5f, 0.0f, 1.0f);
+        panCtrl->set_value(ardourPan, PBD::Controllable::NoGroup);
+        Q_EMIT dataChanged(index(row), index(row), {PanRole});
     }
 }
 
@@ -244,101 +258,35 @@ void NovaTrackListModel::setSolo(int row, bool soloed)
     }
 }
 
-void NovaTrackListModel::setRecEnable(int row, bool enabled)
+void NovaTrackListModel::setRecEnable(int row, bool armed)
 {
     if (row < 0 || row >= static_cast<int>(m_routes.size())) return;
     auto track = std::dynamic_pointer_cast<ARDOUR::Track>(m_routes[static_cast<size_t>(row)]);
-    if (track) {
-        auto rec = track->rec_enable_control();
-        if (rec) {
-            rec->set_value(enabled ? 1.0f : 0.0f, PBD::Controllable::NoGroup);
-            Q_EMIT dataChanged(index(row), index(row), {RecEnableRole});
-        }
+    if (track && track->rec_enable_control()) {
+        track->rec_enable_control()->set_value(armed ? 1.0f : 0.0f, PBD::Controllable::NoGroup);
+        Q_EMIT dataChanged(index(row), index(row), {RecEnableRole});
     }
 }
 
-void NovaTrackListModel::setPan(int row, float pan)
+float NovaTrackListModel::peakLevel(int row) const
 {
-    if (row < 0 || row >= static_cast<int>(m_routes.size())) return;
-    auto panControl = m_routes[static_cast<size_t>(row)]->pan_azimuth_control();
-    if (panControl) {
-        double ardourPan = std::clamp((static_cast<double>(pan) + 1.0) / 2.0, 0.0, 1.0);
-        panControl->set_value(ardourPan, PBD::Controllable::NoGroup);
-        Q_EMIT dataChanged(index(row), index(row), {PanRole});
+    if (row < 0 || row >= static_cast<int>(m_routes.size())) return 0.0f;
+    auto route = m_routes[static_cast<size_t>(row)];
+    if (!route) return 0.0f;
+
+    auto meter = route->peak_meter();
+    if (!meter) return 0.0f;
+
+    float val = meter->meter_level(0, ARDOUR::MeterPeak);
+    if (std::isnan(val) || std::isinf(val) || val < 0.0f) {
+        return 0.0f;
     }
-}
-
-void NovaTrackListModel::connectSessionSignals()
-{
-    if (!m_session) return;
-
-    m_session->RouteAdded.connect_same_thread(m_sessionConnections, [this](ARDOUR::RouteList &routes) {
-        for (auto &route : routes) {
-            if (route) {
-                QMetaObject::invokeMethod(this, [this, route]() {
-                    onRouteAdded(route);
-                }, Qt::QueuedConnection);
-            }
-        }
-    });
-}
-
-void NovaTrackListModel::disconnectSessionSignals()
-{
-    m_sessionConnections.drop_connections();
-}
-
-void NovaTrackListModel::onRouteAdded(std::shared_ptr<ARDOUR::Route> route)
-{
-    if (!route || !route->is_track()) return;
-
-    auto it = std::find(m_routes.begin(), m_routes.end(), route);
-    if (it != m_routes.end()) return;
-
-    int row = static_cast<int>(m_routes.size());
-    beginInsertRows(QModelIndex(), row, row);
-    m_routes.push_back(route);
-    endInsertRows();
-
-    Q_EMIT trackCountChanged(static_cast<int>(m_routes.size()));
-    qDebug() << "🎯 [NovaTracks] Nueva pista agregada al modelo QML:" << QString::fromStdString(route->name());
-}
-
-void NovaTrackListModel::onRouteRemoved(std::shared_ptr<ARDOUR::Route> route)
-{
-    auto it = std::find(m_routes.begin(), m_routes.end(), route);
-    if (it == m_routes.end()) return;
-
-    int row = static_cast<int>(std::distance(m_routes.begin(), it));
-    beginRemoveRows(QModelIndex(), row, row);
-    m_routes.erase(it);
-    endRemoveRows();
-
-    Q_EMIT trackCountChanged(static_cast<int>(m_routes.size()));
-    qDebug() << "🗑️ [NovaTracks] Pista eliminada del modelo QML:" << QString::fromStdString(route->name());
-}
-
-void NovaTrackListModel::rebuildRouteCache()
-{
-    if (!m_session) return;
-
-    beginResetModel();
-    m_routes.clear();
-
-    auto routeList = m_session->get_routes();
-    if (routeList) {
-        for (auto &route : *routeList) {
-            if (route && route->is_track()) {
-                m_routes.push_back(route);
-            }
-        }
-    }
-    endResetModel();
+    return applySoftClip(val);
 }
 
 float NovaTrackListModel::coeffToDb(float coeff)
 {
-    if (coeff <= 0.0f) return -192.0f;
+    if (coeff <= 0.0000001f) return -192.0f;
     return 20.0f * std::log10(coeff);
 }
 

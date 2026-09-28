@@ -44,7 +44,8 @@ public:
         SoloRole,           // bool
         RecEnableRole,      // bool
         PanRole,            // float (-1.0 a +1.0)
-        ColorRole           // QString color hexadecimal
+        ColorRole,          // QString color hexadecimal
+        PeakRole            // float (0.0 a 1.0+, Nivel de Pico en Vivo)
     };
     Q_ENUM(TrackRoles)
 
@@ -67,18 +68,13 @@ public:
     Q_INVOKABLE void setSolo(int row, bool soloed);
     Q_INVOKABLE void setRecEnable(int row, bool enabled);
     Q_INVOKABLE void setPan(int row, float pan);
+    Q_INVOKABLE float peakLevel(int row) const; // 🎙️ Nivel de pico en vivo
 
 signals:
     void trackCountChanged(int count);
 
 private:
-    void connectSessionSignals();
-    void disconnectSessionSignals();
-    void rebuildRouteCache();
-
-    // Callbacks desde señales del core de Ardour
-    void onRouteAdded(std::shared_ptr<ARDOUR::Route> route);
-    void onRouteRemoved(std::shared_ptr<ARDOUR::Route> route);
+    void syncWithArdour();
 
     // Conversión de Amplitud Lineal de Fader <-> Decibelios (Logarítmica)
     static float coeffToDb(float coeff);
