@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QDir>
+#include <QUrl>
 #include <algorithm>
 #include <cmath>
 #include <thread>
@@ -35,7 +36,70 @@
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
 
-// 🚀 IMPLEMENTACIÓN DE CACHÉ EN RAM
+// 🚀 CONSTRUCTOR DE PICOS ULTRA-DEFINIDO (4,000 PUNTOS DE RESOLUCIÓN HD)
+static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::AudioRegion> &region,
+                                               size_t pointCount = 4000)
+{
+    std::vector<PeakPoint> result(pointCount, PeakPoint{0.0f, 0.0f});
+    if (!region || pointCount == 0 || region->n_channels() == 0) return result;
+
+    const auto length = region->length_samples();
+    if (length <= 0) return result;
+
+    for (uint32_t channel = 0; channel < region->n_channels(); ++channel) {
+        auto source = region->audio_source(channel);
+        if (!source) continue;
+
+        constexpr ARDOUR::samplecnt_t bufferSize = 8192;
+        std::vector<ARDOUR::Sample> buffer(static_cast<size_t>(bufferSize));
+
+        const ARDOUR::samplecnt_t baseSamples = length / static_cast<ARDOUR::samplecnt_t>(pointCount);
+        const ARDOUR::samplecnt_t remainder = length % static_cast<ARDOUR::samplecnt_t>(pointCount);
+
+        for (size_t i = 0; i < pointCount; ++i) {
+            const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples +
+                               std::min<ARDOUR::samplecnt_t>(static_cast<ARDOUR::samplecnt_t>(i), remainder);
+            const auto last = static_cast<ARDOUR::samplecnt_t>(i + 1) * baseSamples +
+                              std::min<ARDOUR::samplecnt_t>(static_cast<ARDOUR::samplecnt_t>(i + 1), remainder);
+            
+            auto remaining = last - first;
+            auto cursor = first;
+            float low = 0.0f;
+            float high = 0.0f;
+            bool foundSample = false;
+
+            while (remaining > 0) {
+                const auto requested = std::min(remaining, bufferSize);
+                const auto read = source->read(buffer.data(), region->start_sample() + cursor, requested, 0);
+                if (read <= 0) break;
+
+                for (ARDOUR::samplecnt_t sample = 0; sample < read; ++sample) {
+                    const float value = std::clamp(static_cast<float>(buffer[static_cast<size_t>(sample)]), -1.0f, 1.0f);
+                    if (!foundSample) {
+                        low = high = value;
+                        foundSample = true;
+                    } else {
+                        if (value < low) low = value;
+                        if (value > high) high = value;
+                    }
+                }
+                cursor += read;
+                remaining -= read;
+            }
+
+            if (foundSample) {
+                if (channel == 0) {
+                    result[i] = {low, high};
+                } else {
+                    result[i].min = std::min(result[i].min, low);
+                    result[i].max = std::max(result[i].max, high);
+                }
+            }
+        }
+    }
+    return result;
+}
+
 void NovaWaveformCache::setPeaks(const QString &regionId, const std::vector<PeakPoint> &peaks)
 {
     std::lock_guard<std::mutex> lock(s_mutex);
@@ -66,7 +130,16 @@ NovaRegionModel::NovaRegionModel(QObject *parent)
 
 NovaRegionModel::~NovaRegionModel()
 {
+    waitForImports();
     m_sessionConnections.drop_connections();
+}
+
+void NovaRegionModel::waitForImports()
+{
+    for (auto &thread : m_importThreads) {
+        if (thread.joinable()) thread.join();
+    }
+    m_importThreads.clear();
 }
 
 void NovaRegionModel::setSession(ARDOUR::Session *session)
@@ -125,19 +198,19 @@ QHash<int, QByteArray> NovaRegionModel::roleNames() const
         { LengthFramesRole,    "lengthFrames"    },
         { StartBeatRole,       "startBeat"       },
         { LengthBeatsRole,     "lengthBeats"     },
-        { ColorRole,           "regionColor"     },
+        { ColorRole,           "colorRole"       },
         { IsLiveRecordingRole, "isLiveRecording" }
     };
 }
 
-// 🚀 PERSISTENCIA BINARIA .novapeak (16 KB por canción)
+// 🚀 PERSISTENCIA BINARIA .novapeak (Versión 4 para descartar cachés viejas)
 bool NovaRegionModel::savePeakFile(const QString &peakFilePath, const std::vector<PeakPoint> &peaks)
 {
     std::ofstream out(peakFilePath.toStdString(), std::ios::binary);
     if (!out.is_open()) return false;
 
     out.write("NOVA", 4);
-    uint32_t version = 1;
+    uint32_t version = 4; // 🎯 BUMP A VERSIÓN 4
     uint32_t numPeaks = static_cast<uint32_t>(peaks.size());
 
     out.write(reinterpret_cast<const char*>(&version), sizeof(version));
@@ -161,7 +234,7 @@ bool NovaRegionModel::loadPeakFile(const QString &peakFilePath, std::vector<Peak
     in.read(reinterpret_cast<char*>(&version), sizeof(version));
     in.read(reinterpret_cast<char*>(&numPeaks), sizeof(numPeaks));
 
-    if (numPeaks == 0 || numPeaks > 100000) return false;
+    if (version != 4 || numPeaks == 0 || numPeaks > 100000) return false;
 
     outPeaks.resize(numPeaks);
     in.read(reinterpret_cast<char*>(outPeaks.data()), numPeaks * sizeof(PeakPoint));
@@ -173,10 +246,9 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
 {
     if (!m_session) return false;
 
-    QString cleanPath = filePath;
-    if (cleanPath.startsWith("file://")) {
-        cleanPath = cleanPath.mid(7);
-    }
+    const QUrl fileUrl(filePath);
+    QString cleanPath = fileUrl.isLocalFile() ? fileUrl.toLocalFile() : filePath;
+    if (cleanPath.startsWith("file://")) cleanPath = QUrl(cleanPath).toLocalFile();
 
     QFileInfo fileInfo(cleanPath);
     if (!fileInfo.exists()) return false;
@@ -199,8 +271,7 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
 
     if (!targetTrack) return false;
 
-    // 🚀 1. HILO SECUNDARIO: Remuestreo e Ingeniería de Picos 100% Completa
-    std::thread([this, targetTrack, cleanPath, fileInfo, startBeat]() {
+    m_importThreads.emplace_back([this, targetTrack, cleanPath, fileInfo, startBeat]() {
         try {
             ARDOUR::ImportStatus status;
             status.paths.push_back(cleanPath.toStdString());
@@ -221,90 +292,42 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
                 return;
             }
 
-            PBD::PropertyList plist;
-            plist.add(ARDOUR::Properties::start, Temporal::timepos_t(0));
-            plist.add(ARDOUR::Properties::length, status.sources.front()->length());
-            plist.add(ARDOUR::Properties::name, fileInfo.fileName().toStdString());
-            plist.add(ARDOUR::Properties::layer, 0);
-            plist.add(ARDOUR::Properties::whole_file, true);
-            plist.add(ARDOUR::Properties::opaque, true);
+            const ARDOUR::SourceList importedSources = status.sources;
+            QMetaObject::invokeMethod(this, [this, targetTrack, importedSources, fileInfo, startBeat]() {
+                if (!m_session || importedSources.empty()) return;
 
-            std::shared_ptr<ARDOUR::Region> region = ARDOUR::RegionFactory::create(status.sources, plist);
-            if (!region) return;
+                PBD::PropertyList plist;
+                plist.add(ARDOUR::Properties::start, Temporal::timepos_t(0));
+                plist.add(ARDOUR::Properties::length, importedSources.front()->length());
+                plist.add(ARDOUR::Properties::name, fileInfo.fileName().toStdString());
+                plist.add(ARDOUR::Properties::layer, 0);
+                plist.add(ARDOUR::Properties::whole_file, true);
+                plist.add(ARDOUR::Properties::opaque, true);
 
-            // 🎯 2. ESCANEO SECUENCIAL 100% COMPLETO DE MUESTRAS DESDE EL AUDIO SOURCE
-            const size_t numPoints = 1200;
-            std::vector<PeakPoint> ramPeaks(numPoints);
-
-            std::shared_ptr<ARDOUR::AudioSource> audioSrc = std::dynamic_pointer_cast<ARDOUR::AudioSource>(status.sources.front());
-            if (audioSrc) {
-                ARDOUR::samplecnt_t totalSamples = audioSrc->readable_length_samples();
-                if (totalSamples > 0) {
-                    ARDOUR::samplecnt_t chunkSize = totalSamples / numPoints;
-                    if (chunkSize < 1) chunkSize = 1;
-
-                    const ARDOUR::samplecnt_t BUF_SIZE = 8192;
-                    std::vector<ARDOUR::Sample> buf(BUF_SIZE);
-
-                    ARDOUR::samplepos_t currentSample = 0;
-
-                    for (size_t p = 0; p < numPoints; ++p) {
-                        ARDOUR::samplecnt_t samplesToReadForThisPoint = chunkSize;
-                        float minV = 0.0f;
-                        float maxV = 0.0f;
-                        bool first = true;
-
-                        while (samplesToReadForThisPoint > 0 && currentSample < totalSamples) {
-                            ARDOUR::samplecnt_t toRead = std::min(samplesToReadForThisPoint, BUF_SIZE);
-                            ARDOUR::samplecnt_t nRead = audioSrc->read(buf.data(), currentSample, toRead, 0);
-                            if (nRead <= 0) break;
-
-                            for (ARDOUR::samplecnt_t s = 0; s < nRead; ++s) {
-                                float val = static_cast<float>(buf[s]);
-                                if (first) {
-                                    minV = maxV = val;
-                                    first = false;
-                                } else {
-                                    if (val < minV) minV = val;
-                                    if (val > maxV) maxV = val;
-                                }
-                            }
-                            currentSample += nRead;
-                            samplesToReadForThisPoint -= nRead;
-                        }
-
-                        ramPeaks[p].min = std::clamp(minV, -1.0f, 1.0f);
-                        ramPeaks[p].max = std::clamp(maxV, -1.0f, 1.0f);
-                    }
+                auto region = ARDOUR::RegionFactory::create(importedSources, plist);
+                if (!region) {
+                    qCWarning(novaModel) << "Ardour no pudo crear la región para:" << fileInfo.fileName();
+                    return;
                 }
-            }
 
-            QString regId = QString::fromStdString(region->id().to_s());
-            NovaWaveformCache::setPeaks(regId, ramPeaks);
+                auto playlist = targetTrack->playlist();
+                if (!playlist) {
+                    qCWarning(novaModel) << "La pista no tiene playlist para insertar:" << fileInfo.fileName();
+                    return;
+                }
 
-            // 🚀 Corregido: m_session->path() directo para obtener la carpeta de la sesión
-            QString sessionPeaksDir = QString::fromStdString(m_session->path()) + "/peaks";
-            QDir().mkpath(sessionPeaksDir);
-            QString peakFile = sessionPeaksDir + "/" + regId + ".novapeak";
-            savePeakFile(peakFile, ramPeaks);
-
-            double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 48000.0;
-            ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
-
-            auto playlist = targetTrack->playlist();
-            if (playlist) {
+                const double sampleRate = m_session->sample_rate() > 0
+                    ? static_cast<double>(m_session->sample_rate()) : 48000.0;
+                const auto startSample = static_cast<ARDOUR::samplepos_t>(
+                    NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
                 playlist->add_region(region, Temporal::timepos_t(startSample));
-
-                // 🚀 3. HILO PRINCIPAL: Notificar actualización a QML
-                QMetaObject::invokeMethod(this, [this, fileInfo]() {
-                    rebuildRegionCache();
-                    qCDebug(novaModel) << "✅ Audio y Caché RAM (.novapeak) procesados con éxito:" << fileInfo.fileName();
-                }, Qt::QueuedConnection);
-            }
+                rebuildRegionCache();
+                qCDebug(novaModel) << "Audio insertado en el timeline:" << fileInfo.fileName();
+            }, Qt::QueuedConnection);
         } catch (const std::exception &e) {
             qCWarning(novaModel) << "Excepción al importar audio:" << e.what();
         }
-    }).detach();
+    });
 
     return true;
 }
@@ -473,8 +496,8 @@ void NovaRegionModel::rebuildRegionCache()
 
     auto routeList = m_session->get_routes();
     double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 48000.0;
-    // 🚀 Corregido: m_session->path() directo
     QString sessionPeaksDir = QString::fromStdString(m_session->path()) + "/peaks";
+    QDir().mkpath(sessionPeaksDir);
 
     if (routeList) {
         int trackIdx = 0;
@@ -502,13 +525,17 @@ void NovaRegionModel::rebuildRegionCache()
                         item.color = QStringLiteral("#4A90E2");
                         item.isLiveRecording = false;
 
-                        // 🚀 Carga ultra-rápida desde disco (.novapeak) a RAM
+                        // 🚀 Carga ultra-rápida desde disco (.novapeak versión 4) a RAM
                         std::vector<PeakPoint> cachedPeaks;
                         if (!NovaWaveformCache::getPeaks(item.id, cachedPeaks)) {
                             QString peakFile = sessionPeaksDir + "/" + item.id + ".novapeak";
-                            if (loadPeakFile(peakFile, cachedPeaks)) {
-                                NovaWaveformCache::setPeaks(item.id, cachedPeaks);
+                            if (!loadPeakFile(peakFile, cachedPeaks)) {
+                                if (auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(reg)) {
+                                    cachedPeaks = buildRegionPeaks(audioRegion);
+                                    savePeakFile(peakFile, cachedPeaks);
+                                }
                             }
+                            if (!cachedPeaks.empty()) NovaWaveformCache::setPeaks(item.id, cachedPeaks);
                         }
 
                         m_regions.push_back(item);

@@ -268,7 +268,7 @@ Rectangle {
             // Importar archivo en esta pista (index) comenzando en el compás 1 (startBeat = 0)
             var success = AudioEngine.regions.importAudioFile(index, selectedFile, 0.0)
             if (success) {
-                console.log("✅ [GUI] Audio importado exitosamente en el Timeline!")
+                console.log("⏳ [GUI] Importación aceptada; preparando el clip...")
             } else {
                 console.log("❌ [GUI] Error al importar el archivo de audio")
             }

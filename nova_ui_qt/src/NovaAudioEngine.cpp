@@ -34,6 +34,7 @@ NovaAudioEngine::NovaAudioEngine(QObject *parent)
 NovaAudioEngine::~NovaAudioEngine()
 {
     qCDebug(novaCore) << "Destruyendo NovaAudioEngine... Cierre seguro de recursos.";
+    if (m_regionModel) m_regionModel->waitForImports();
     m_transport.setSession(nullptr);
     m_recorder.setSession(nullptr);
 }

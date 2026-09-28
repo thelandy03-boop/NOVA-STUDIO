@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <map>
+#include <thread>
 
 #pragma push_macro("emit")
 #pragma push_macro("slots")
@@ -84,6 +85,8 @@ public:
     explicit NovaRegionModel(QObject *parent = nullptr);
     ~NovaRegionModel() override;
 
+    void waitForImports();
+
     void setSession(ARDOUR::Session *session);
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -114,4 +117,5 @@ private:
     std::vector<NovaRegionItem> m_regions;
     PBD::ScopedConnectionList m_sessionConnections;
     int m_liveRecordingIndex = -1;
+    std::vector<std::thread> m_importThreads;
 };

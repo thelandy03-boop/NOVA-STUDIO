@@ -3,6 +3,7 @@
 #include "../core/NovaLogging.h"
 #include <QPainter>
 #include <QPainterPath>
+#include <QLinearGradient>
 #include <cmath>
 #include <algorithm>
 #include <vector>
@@ -87,49 +88,95 @@ void NovaWaveformItem::paint(QPainter *painter)
     float centerY = heightPx / 2.0f;
     QString regId = QString::fromStdString(targetRegion->id().to_s());
 
-    // 🚀 LECTURA DIRECTA DE MEMORIA RAM EN 0.0001 MS (Cero I/O de disco)
+    // 🚀 LECTURA DE MEMORIA RAM EN 0.0001 MS
     std::vector<PeakPoint> ramPeaks;
     bool hasData = NovaWaveformCache::getPeaks(regId, ramPeaks);
 
     painter->setRenderHint(QPainter::Antialiasing, true);
 
-    QColor fillColor = m_waveColor;
-    fillColor.setAlpha(195);
-    QColor strokeColor = m_waveColor.lighter(135);
-
-    painter->setPen(QPen(strokeColor, 1.0));
-    painter->setBrush(fillColor);
-
     if (hasData && !ramPeaks.empty()) {
-        QPolygonF polygon;
-        size_t nPeaks = ramPeaks.size();
-        polygon.reserve(nPeaks * 2);
+        size_t ramSize = ramPeaks.size();
 
-        double xStep = static_cast<double>(widthPx) / static_cast<double>(nPeaks);
+        QPolygonF peakPolygon;
+        QPolygonF rmsPolygon;
+        peakPolygon.reserve(widthPx * 2);
+        rmsPolygon.reserve(widthPx * 2);
 
-        // 🎨 Envolvente Superior
-        for (size_t i = 0; i < nPeaks; ++i) {
-            float maxVal = ramPeaks[i].max;
-            float yMax = centerY - (maxVal * centerY * 0.88f);
-            polygon << QPointF(static_cast<double>(i) * xStep, yMax);
+        std::vector<QPointF> peakTop, peakBottom;
+        std::vector<QPointF> rmsTop, rmsBottom;
+        peakTop.reserve(widthPx);
+        peakBottom.reserve(widthPx);
+        rmsTop.reserve(widthPx);
+        rmsBottom.reserve(widthPx);
+
+        // 🎯 MAPEO Y CÁLCULO DE DOBLE CAPA (PEAK + RMS CORE)
+        for (int x = 0; x < widthPx; ++x) {
+            double normX = static_cast<double>(x) / static_cast<double>(std::max(1, widthPx - 1));
+            double peakIdxF = normX * static_cast<double>(ramSize - 1);
+            
+            size_t idx0 = static_cast<size_t>(std::floor(peakIdxF));
+            size_t idx1 = std::min(idx0 + 1, ramSize - 1);
+            double frac = peakIdxF - static_cast<double>(idx0);
+
+            float minVal = ramPeaks[idx0].min * (1.0f - frac) + ramPeaks[idx1].min * frac;
+            float maxVal = ramPeaks[idx0].max * (1.0f - frac) + ramPeaks[idx1].max * frac;
+
+            // 1. Capa Exterior (Picos)
+            float yMaxPeak = centerY - (maxVal * centerY * 0.90f);
+            float yMinPeak = centerY - (minVal * centerY * 0.90f);
+
+            // 2. Capa Interior (Núcleo RMS de energía)
+            float rmsVal = (std::abs(maxVal) + std::abs(minVal)) * 0.5f * 0.65f;
+            float yMaxRms = centerY - (rmsVal * centerY * 0.90f);
+            float yMinRms = centerY + (rmsVal * centerY * 0.90f);
+
+            if (std::abs(yMinPeak - yMaxPeak) < 1.0f) {
+                yMaxPeak = centerY - 0.5f;
+                yMinPeak = centerY + 0.5f;
+            }
+
+            peakTop.emplace_back(static_cast<double>(x), yMaxPeak);
+            peakBottom.emplace_back(static_cast<double>(x), yMinPeak);
+
+            rmsTop.emplace_back(static_cast<double>(x), yMaxRms);
+            rmsBottom.emplace_back(static_cast<double>(x), yMinRms);
         }
 
-        // 🎨 Envolvente Inferior
-        for (int i = static_cast<int>(nPeaks) - 1; i >= 0; --i) {
-            float minVal = ramPeaks[i].min;
-            float yMin = centerY - (minVal * centerY * 0.88f);
-            polygon << QPointF(static_cast<double>(i) * xStep, yMin);
-        }
+        // Construir Polígonos
+        for (const auto &pt : peakTop) peakPolygon << pt;
+        for (auto it = peakBottom.rbegin(); it != peakBottom.rend(); ++it) peakPolygon << *it;
 
-        // 🎯 DIBUJO LLENO, DERSO Y SUAVE ESTILO REAPER / FL STUDIO
-        painter->drawPolygon(polygon);
+        for (const auto &pt : rmsTop) rmsPolygon << pt;
+        for (auto it = rmsBottom.rbegin(); it != rmsBottom.rend(); ++it) rmsPolygon << *it;
+
+        // 🎨 1. DIBUJAR CAPA EXTERIOR (PEAKS - Semi-transparente)
+        QColor peakFill = m_waveColor.lighter(140);
+        peakFill.setAlpha(110);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(peakFill);
+        painter->drawPolygon(peakPolygon);
+
+        // 🎨 2. DIBUJAR CAPA INTERIOR (RMS CORE - Sólida e Intensa estilo Ableton/Pro Tools)
+        QColor rmsFill = m_waveColor.lighter(160);
+        rmsFill.setAlpha(220);
+        painter->setBrush(rmsFill);
+        painter->drawPolygon(rmsPolygon);
+
+        // 🎨 3. CONTORNO NÍTIDO (OUTLINE HD)
+        QPen outlinePen(m_waveColor.lighter(180), 1.0);
+        painter->setPen(outlinePen);
+
+        for (size_t i = 1; i < peakTop.size(); ++i) {
+            painter->drawLine(peakTop[i - 1], peakTop[i]);
+            painter->drawLine(peakBottom[i - 1], peakBottom[i]);
+        }
     } else {
-        // Línea neutra silenciosa mientras se procesa la caché de RAM
+        // Línea neutra silenciosa
         painter->setPen(QPen(m_waveColor.darker(130), 1.0));
         painter->drawLine(0, static_cast<int>(centerY), widthPx, static_cast<int>(centerY));
     }
 
-    // Línea central de guía
-    painter->setPen(QPen(QColor(255, 255, 255, 40), 1.0, Qt::DashLine));
+    // Línea central de referencia
+    painter->setPen(QPen(QColor(255, 255, 255, 30), 1.0, Qt::DashLine));
     painter->drawLine(0, static_cast<int>(centerY), widthPx, static_cast<int>(centerY));
 }
