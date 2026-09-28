@@ -50,6 +50,8 @@ qt_add_executable(nova_ui_qt
     src/core/NovaTransportController.cpp
     src/core/NovaRecordManager.h
     src/core/NovaRecordManager.cpp
+    src/core/NovaAudioDeviceManager.h
+    src/core/NovaAudioDeviceManager.cpp
     src/core/NovaTimeUtils.h
     src/core/NovaTimeUtils.cpp
     src/models/NovaTrackListModel.h

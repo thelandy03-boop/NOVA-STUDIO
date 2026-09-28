@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <algorithm>
 #include <cmath>
+#include <thread>
 
 #pragma push_macro("emit")
 #pragma push_macro("slots")
@@ -22,6 +23,7 @@
 #include "ardour/data_type.h"
 #include "ardour/source.h"
 #include "ardour/region.h"
+#include "ardour/import_status.h"  // 🚀 Header nativo de importación de Ardour
 
 #pragma pop_macro("emit")
 #pragma pop_macro("slots")
@@ -128,47 +130,63 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
 
     if (!targetTrack) return false;
 
-    try {
-        std::shared_ptr<ARDOUR::Source> source = ARDOUR::SourceFactory::createExternal(
-            ARDOUR::DataType::AUDIO,
-            *m_session,
-            cleanPath.toStdString(),
-            0,
-            (ARDOUR::Source::Flag)0
-        );
+    // 🚀 1. HILO SECUNDARIO: Remuestreo pesado (MP3 -> WAV 48kHz) sin bloquear la UI
+    std::thread([this, targetTrack, cleanPath, fileInfo, startBeat]() {
+        try {
+            ARDOUR::ImportStatus status;
+            status.paths.push_back(cleanPath.toStdString());
+            status.quality = ARDOUR::SrcFastest;  // Remuestreo ultrarrápido y fluido
+            status.replace_existing_source = false;
+            status.split_midi_channels = false;
+            status.import_markers = false;
+            status.cancel = false;
+            status.done = false;
+            status.all_done = false;
+            status.current = 0;
+            status.total = 1;
 
-        if (!source) return false;
+            // Procesar conversión pesada de audio en segundo plano
+            m_session->import_files(status);
 
-        PBD::PropertyList plist;
-        plist.add(ARDOUR::Properties::start, Temporal::timepos_t(0));
-        plist.add(ARDOUR::Properties::length, source->length());
-        plist.add(ARDOUR::Properties::name, fileInfo.fileName().toStdString());
-        plist.add(ARDOUR::Properties::layer, 0);
-        plist.add(ARDOUR::Properties::whole_file, true);
-        plist.add(ARDOUR::Properties::external, true);
-        plist.add(ARDOUR::Properties::opaque, true);
+            if (status.sources.empty() || status.cancel) {
+                qCWarning(novaModel) << "No se pudieron generar fuentes de audio para:" << cleanPath;
+                return;
+            }
 
-        ARDOUR::SourceList sources;
-        sources.push_back(source);
+            // 🚀 2. HILO PRINCIPAL: Insertar la región y refrescar QML de forma 100% segura
+            QMetaObject::invokeMethod(this, [this, targetTrack, sources = status.sources, fileInfo, startBeat]() {
+                try {
+                    PBD::PropertyList plist;
+                    plist.add(ARDOUR::Properties::start, Temporal::timepos_t(0));
+                    plist.add(ARDOUR::Properties::length, sources.front()->length());
+                    plist.add(ARDOUR::Properties::name, fileInfo.fileName().toStdString());
+                    plist.add(ARDOUR::Properties::layer, 0);
+                    plist.add(ARDOUR::Properties::whole_file, true);
+                    plist.add(ARDOUR::Properties::opaque, true);
 
-        std::shared_ptr<ARDOUR::Region> region = ARDOUR::RegionFactory::create(sources, plist);
-        if (!region) return false;
+                    std::shared_ptr<ARDOUR::Region> region = ARDOUR::RegionFactory::create(sources, plist);
+                    if (!region) return;
 
-        double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
-        ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
+                    double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 48000.0;
+                    ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
 
-        auto playlist = targetTrack->playlist();
-        if (playlist) {
-            playlist->add_region(region, Temporal::timepos_t(startSample));
-            rebuildRegionCache();
-            qCDebug(novaModel) << "Archivo de audio importado con éxito:" << fileInfo.fileName();
-            return true;
+                    auto playlist = targetTrack->playlist();
+                    if (playlist) {
+                        playlist->add_region(region, Temporal::timepos_t(startSample));
+                        rebuildRegionCache();
+                        qCDebug(novaModel) << "✅ Audio importado, remuestreado y renderizado en UI exitosamente:" << fileInfo.fileName();
+                    }
+                } catch (const std::exception &e) {
+                    qCWarning(novaModel) << "Excepción al insertar región en el hilo principal:" << e.what();
+                }
+            }, Qt::QueuedConnection);
+
+        } catch (const std::exception &e) {
+            qCWarning(novaModel) << "Excepción en hilo de importación de audio:" << e.what();
         }
-    } catch (const std::exception &e) {
-        qCWarning(novaModel) << "Excepción al importar audio:" << e.what();
-    }
+    }).detach();
 
-    return false;
+    return true;
 }
 
 bool NovaRegionModel::moveRegion(int regionIndex, double newStartBeat)
@@ -176,7 +194,7 @@ bool NovaRegionModel::moveRegion(int regionIndex, double newStartBeat)
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return false;
 
     auto &item = m_regions[static_cast<size_t>(regionIndex)];
-    double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 44100.0;
+    double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 48000.0;
     ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(newStartBeat, sampleRate, 120.0));
 
     if (item.regionPtr) {
@@ -195,7 +213,7 @@ bool NovaRegionModel::resizeRegion(int regionIndex, double newStartBeat, double 
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return false;
 
     auto &item = m_regions[static_cast<size_t>(regionIndex)];
-    double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 44100.0;
+    double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 48000.0;
     
     ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(newStartBeat, sampleRate, 120.0));
     ARDOUR::samplecnt_t lengthSamples = static_cast<ARDOUR::samplecnt_t>(NovaTimeUtils::beatToFrame(newLengthBeats, sampleRate, 120.0));
@@ -253,7 +271,6 @@ void NovaRegionModel::removeRegion(int regionIndex)
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }
 
-// 🎙️ CREAR CLIP EN VIVO
 void NovaRegionModel::createLiveRecordingClip(double startBeat)
 {
     int armedTrackIdx = 0;
@@ -285,7 +302,7 @@ void NovaRegionModel::createLiveRecordingClip(double startBeat)
     item.trackIndex = armedTrackIdx;
     item.name = QStringLiteral("🔴 Recording...");
     item.startBeat = startBeat;
-    item.lengthBeats = 0.0; // 🔒 Arranca exactamente en 0.0
+    item.lengthBeats = 0.0;
     item.color = QStringLiteral("#FF3B30");
     item.isLiveRecording = true;
 
@@ -305,14 +322,13 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
     Q_EMIT dataChanged(index(m_liveRecordingIndex), index(m_liveRecordingIndex), {LengthBeatsRole});
 }
 
-// 🎙️ FINALIZAR GRABACIÓN Y CONSERVAR PERMANENTEMENTE EL CLIP EN PANTALLA
 void NovaRegionModel::finalizeLiveRecordingClip()
 {
     if (m_liveRecordingIndex >= 0 && m_liveRecordingIndex < static_cast<int>(m_regions.size())) {
         auto &item = m_regions[static_cast<size_t>(m_liveRecordingIndex)];
         item.isLiveRecording = false;
         item.name = QStringLiteral("Audio Take %1").arg(m_liveRecordingIndex + 1);
-        item.color = QStringLiteral("#E74C3C"); // Rojo definitivo grabado
+        item.color = QStringLiteral("#E74C3C");
 
         Q_EMIT dataChanged(index(m_liveRecordingIndex), index(m_liveRecordingIndex), 
                            {RegionNameRole, ColorRole, IsLiveRecordingRole});
@@ -336,7 +352,7 @@ void NovaRegionModel::rebuildRegionCache()
     m_regions.clear();
 
     auto routeList = m_session->get_routes();
-    double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
+    double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 48000.0;
 
     if (routeList) {
         int trackIdx = 0;

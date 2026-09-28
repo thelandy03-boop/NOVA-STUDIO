@@ -32,8 +32,8 @@ Futex Semaphore: True\n\
 Freedesktop files: False\n\
 G_ENABLE_DEBUG: True\n\
 I/O Priority Set: True\n\
-Libjack linking: []\n\
-Libjack metadata: False\n\
+Libjack linking: link\n\
+Libjack metadata: True\n\
 Lua Binding Doc: False\n\
 Lua Commandline Tool: True\n\
 LV2 UI embedding: True\n\
@@ -61,7 +61,7 @@ PortAudio Backend: False\n\
 CoreAudio/Midi Backend: False\n\
 ALSA Backend: True\n\
 Dummy backend: True\n\
-JACK Backend: False\n\
+JACK Backend: True\n\
 PulseAudio Backend: False\n\
 \n\
 Buildstack: -system-\n\

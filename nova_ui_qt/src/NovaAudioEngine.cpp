@@ -1,5 +1,6 @@
 #include "NovaAudioEngine.h"
 #include "core/NovaLogging.h"
+#include "core/NovaAudioDeviceManager.h"
 #include "models/NovaTrackListModel.h"
 #include "models/NovaRegionModel.h"
 #include "views/NovaWaveformItem.h"
@@ -45,7 +46,9 @@ bool NovaAudioEngine::initEngine()
     }
 
     auto session = m_sessionManager.session();
+    auto engine = m_sessionManager.engine();
 
+    m_deviceManager.setEngine(engine);
     m_transport.setSession(session);
     m_trackModel->setSession(session);
     m_regionModel->setSession(session);
@@ -58,6 +61,6 @@ bool NovaAudioEngine::initEngine()
     Q_EMIT tracksChanged();
     Q_EMIT regionsChanged();
 
-    qCDebug(novaCore) << "🚀 Arquitectura Modular Inicializada con Éxito.";
+    qCDebug(novaCore) << "🚀 Arquitectura Modular Inicializada con Éxito con Motor Real.";
     return true;
 }

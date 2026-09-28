@@ -7,6 +7,7 @@
 #include "core/NovaSessionManager.h"
 #include "core/NovaTransportController.h"
 #include "core/NovaRecordManager.h"
+#include "core/NovaAudioDeviceManager.h"
 #include "core/NovaTimeUtils.h"
 #include "models/NovaTrackListModel.h"
 #include "models/NovaRegionModel.h"
@@ -25,6 +26,7 @@ class NovaAudioEngine : public QObject
     
     Q_PROPERTY(NovaTrackListModel* tracks READ tracks NOTIFY tracksChanged)
     Q_PROPERTY(NovaRegionModel* regions READ regions NOTIFY regionsChanged)
+    Q_PROPERTY(NovaAudioDeviceManager* deviceManager READ deviceManager CONSTANT)
 
     Q_PROPERTY(bool loopEnabled READ loopEnabled WRITE setLoopEnabled NOTIFY loopEnabledChanged)
     Q_PROPERTY(double loopStartBeat READ loopStartBeat NOTIFY loopRangeChanged)
@@ -32,11 +34,10 @@ class NovaAudioEngine : public QObject
 
 public:
     explicit NovaAudioEngine(QObject *parent = nullptr);
-    ~NovaAudioEngine() override; // 🔒 Corrección: sin '= default' para permitir destructor personalizado en .cpp
+    ~NovaAudioEngine() override;
 
     bool initEngine();
 
-    // 🎯 HELPER MATEMÁTICO EXPESTO A QML (Clean Code)
     Q_INVOKABLE double beatToPixel(double beat, double barWidth = 80.0) const { return NovaTimeUtils::beatToPixel(beat, barWidth); }
     Q_INVOKABLE double pixelToBeat(double pixelX, double barWidth = 80.0) const { return NovaTimeUtils::pixelToBeat(pixelX, barWidth); }
 
@@ -63,6 +64,7 @@ public:
     
     NovaTrackListModel* tracks() const { return m_trackModel; }
     NovaRegionModel* regions() const { return m_regionModel; }
+    NovaAudioDeviceManager* deviceManager() { return &m_deviceManager; }
 
     bool loopEnabled() const { return m_transport.loopEnabled(); }
     double loopStartBeat() const { return m_transport.loopStartBeat(); }
@@ -84,6 +86,7 @@ private:
     NovaSessionManager m_sessionManager;
     NovaTransportController m_transport;
     NovaRecordManager m_recorder;
+    NovaAudioDeviceManager m_deviceManager;
 
     NovaTrackListModel *m_trackModel = nullptr;
     NovaRegionModel *m_regionModel = nullptr;

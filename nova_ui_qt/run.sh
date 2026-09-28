@@ -1,39 +1,22 @@
 #!/bin/bash
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-NOVA_ROOT="$SCRIPT_DIR/.."
-ARDOUR_BUILD="$NOVA_ROOT/build"
-ARDOUR_LIBS="$ARDOUR_BUILD/libs"
+export QT_QPA_PLATFORM=xcb
 
-# 1. Generar enlaces simbólicos SONAME si no existen
-python3 -c "
-import os, glob, subprocess
-libs = glob.glob('$ARDOUR_LIBS/**/*.so*', recursive=True)
-for so in libs:
-    try:
-        out = subprocess.check_output(['readelf', '-d', so], text=True, stderr=subprocess.DEVNULL)
-        for line in out.splitlines():
-            if 'SONAME' in line:
-                soname = line.split('[')[1].split(']')[0]
-                dir_path = os.path.dirname(so)
-                link_path = os.path.join(dir_path, soname)
-                if not os.path.exists(link_path):
-                    os.symlink(os.path.basename(so), link_path)
-    except Exception:
-        pass
-"
+NOVA_BUILD_DIR="/home/landy/Descargas/NOVA-STUDIO/build"
+NOVA_BUILD_LIBS="$NOVA_BUILD_DIR/libs"
 
-# 2. Configurar rutas de enlace de librerías
-ALL_PATHS=$(find "$ARDOUR_LIBS" -type f -name "*.so*" -exec dirname {} + | sort -u | tr '\n' ':')
-export LD_LIBRARY_PATH="$ALL_PATHS:$LD_LIBRARY_PATH"
+# 🎯 Rutas de librerías y dependencias de Ardour
+export ARDOUR_DLL_PATH="$NOVA_BUILD_LIBS/backends:$NOVA_BUILD_LIBS/ardour:$NOVA_BUILD_LIBS/pbd"
+export ARDOUR_BACKEND_PATH="$NOVA_BUILD_LIBS/backends/jack:$NOVA_BUILD_LIBS/backends/alsa:$NOVA_BUILD_LIBS/backends/dummy"
 
-# 3. Configurar variables de entorno requeridas por Ardour
-export ARDOUR_CONFIG_PATH="$NOVA_ROOT/system_config:$NOVA_ROOT/share"
-export ARDOUR_DATA_PATH="$NOVA_ROOT/share"
+# 🚀 NUEVA RUTA REQUERIDA: Localización de los paneadores internos de audio
+export ARDOUR_PANNER_PATH="$NOVA_BUILD_LIBS/panners"
 
-# Rutas para el descubrimiento de plugins de panorama y backends
-export ARDOUR_PANNER_PATH="$ARDOUR_LIBS/panners/1in2out:$ARDOUR_LIBS/panners/2in2out:$ARDOUR_LIBS/panners/stereobalance:$ARDOUR_LIBS/panners/vbap"
-export ARDOUR_DLL_PATH="$ARDOUR_LIBS/backends/alsa:$ARDOUR_LIBS/backends/dummy:$ARDOUR_LIBS/panners/1in2out:$ARDOUR_LIBS/panners/2in2out:$ARDOUR_LIBS/panners/stereobalance:$ARDOUR_LIBS/panners/vbap"
-export ARDOUR_BACKEND_PATH="$ARDOUR_LIBS/backends/alsa:$ARDOUR_LIBS/backends/dummy"
+export LD_LIBRARY_PATH="$NOVA_BUILD_LIBS/ardour:$NOVA_BUILD_LIBS/pbd:$NOVA_BUILD_LIBS/temporal:$NOVA_BUILD_LIBS/evoral:$NOVA_BUILD_LIBS/midi++2:$NOVA_BUILD_LIBS/fst:$NOVA_BUILD_LIBS/tk/suil:$NOVA_BUILD_LIBS/audiographer:$NOVA_BUILD_LIBS/ardouralsautil:$NOVA_BUILD_LIBS/backends/jack:$NOVA_BUILD_LIBS/backends/alsa:$NOVA_BUILD_LIBS/backends/dummy:$LD_LIBRARY_PATH"
 
-# 4. Lanzar la aplicación
-exec "$SCRIPT_DIR/build/nova_ui_qt" "$@"
+if command -v pw-jack >/dev/null 2>&1; then
+    echo "🔊 Ejecutando con PipeWire-JACK Wrapper (pw-jack)..."
+    exec pw-jack ./build/nova_ui_qt "$@"
+else
+    echo "🚀 Ejecutando de forma directa..."
+    exec ./build/nova_ui_qt "$@"
+fi
