@@ -31,6 +31,7 @@ pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
 pkg_check_modules(GIOMM REQUIRED IMPORTED_TARGET giomm-2.4)
 pkg_check_modules(LIBXML REQUIRED IMPORTED_TARGET libxml-2.0)
 pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
+pkg_check_modules(ALSA REQUIRED IMPORTED_TARGET alsa)
 
 qt_standard_project_setup()
 qt_policy(SET QTP0001 NEW)
@@ -52,6 +53,8 @@ qt_add_executable(nova_ui_qt
     src/core/NovaRecordManager.cpp
     src/core/NovaAudioDeviceManager.h
     src/core/NovaAudioDeviceManager.cpp
+    src/core/NovaHardwareSanitizer.h
+    src/core/NovaHardwareSanitizer.cpp
     src/core/NovaTimeUtils.h
     src/core/NovaTimeUtils.cpp
     src/models/NovaTrackListModel.h
@@ -133,6 +136,7 @@ target_link_libraries(nova_ui_qt PRIVATE
     PkgConfig::GIOMM
     PkgConfig::LIBXML
     PkgConfig::SNDFILE
+    PkgConfig::ALSA
     ${ARDOUR_BUILD_DIR}/libs/ardour/libardour.so
     ${ARDOUR_BUILD_DIR}/libs/pbd/libpbd.so
     ${ARDOUR_BUILD_DIR}/libs/temporal/libtemporal.so

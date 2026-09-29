@@ -39,7 +39,6 @@
 #pragma pop_macro("foreach")
 
 // 🎛️ SOFT CLIPPER ANALÓGICO TRANSPARENTE (CERO ALLOCATIONS EN THREAD RT)
-// Mantiene 100% linealidad hasta 0.8f (-1.92 dBFS) y comprime suavemente hacia 1.0f
 inline float applySoftClip(float x) noexcept
 {
     constexpr float threshold = 0.8f;
@@ -51,6 +50,17 @@ inline float applySoftClip(float x) noexcept
         return -(threshold + margin * std::tanh((-x - threshold) / margin));
     }
     return x;
+}
+
+// Auxiliares de conversión de volumen
+static inline float coeffToDb(float coeff) {
+    if (coeff <= 0.000001f) return -192.0f;
+    return 20.0f * std::log10(coeff);
+}
+
+static inline float dbToCoeff(float dB) {
+    if (dB <= -192.0f) return 0.0f;
+    return std::pow(10.0f, dB / 20.0f);
 }
 
 // 🚀 CONSTRUCTOR DE PICOS ULTRA-DEFINIDO (4,000 PUNTOS DE RESOLUCIÓN HD + RMS + SOFT CLIP)
@@ -93,7 +103,6 @@ static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::Aud
                 if (read <= 0) break;
 
                 for (ARDOUR::samplecnt_t sample = 0; sample < read; ++sample) {
-                    // Soft Clipper preventivo en lugar de Hard Clamp
                     const float rawValue = static_cast<float>(buffer[static_cast<size_t>(sample)]);
                     const float value = applySoftClip(rawValue);
 
@@ -211,6 +220,9 @@ QVariant NovaRegionModel::data(const QModelIndex &index, int role) const
     case LengthBeatsRole:     return item.lengthBeats;
     case ColorRole:           return item.color;
     case IsLiveRecordingRole: return item.isLiveRecording;
+    case ClipGainDbRole:      return item.clipGainDb;
+    case FadeInBeatsRole:     return item.fadeInBeats;
+    case FadeOutBeatsRole:    return item.fadeOutBeats;
     default:                  return {};
     }
 }
@@ -225,8 +237,11 @@ QHash<int, QByteArray> NovaRegionModel::roleNames() const
         { LengthFramesRole,    "lengthFrames"    },
         { StartBeatRole,       "startBeat"       },
         { LengthBeatsRole,     "lengthBeats"     },
-        { ColorRole,           "colorRole"       },
-        { IsLiveRecordingRole, "isLiveRecording" }
+        { ColorRole,           "regionColor"     },
+        { IsLiveRecordingRole, "isLiveRecording" },
+        { ClipGainDbRole,      "clipGainDb"      },
+        { FadeInBeatsRole,     "fadeInBeats"     },
+        { FadeOutBeatsRole,    "fadeOutBeats"    }
     };
 }
 
@@ -440,6 +455,88 @@ void NovaRegionModel::removeRegion(int regionIndex)
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }
 
+// 🔊 CONTROL DE VOLUMEN (CLIP GAIN) DIGITAL NATIVO
+void NovaRegionModel::setClipGainDb(int regionIndex, float dB)
+{
+    if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
+    auto &item = m_regions[static_cast<size_t>(regionIndex)];
+    
+    auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(item.regionPtr);
+    if (audioRegion) {
+        audioRegion->set_scale_amplitude(dbToCoeff(dB));
+        item.clipGainDb = dB;
+        Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {ClipGainDbRole});
+        qCDebug(novaModel) << "🔊 [Clip Gain] Ajustado volumen de" << item.name << "a" << dB << "dB";
+    }
+}
+
+// ⚡ CONTROL DE FUNDIDO DE ENTRADA (FADE IN)
+void NovaRegionModel::setFadeInBeats(int regionIndex, double beats)
+{
+    if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
+    auto &item = m_regions[static_cast<size_t>(regionIndex)];
+
+    auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(item.regionPtr);
+    if (audioRegion && m_session) {
+        double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 48000.0;
+        auto fadeSamples = static_cast<ARDOUR::samplecnt_t>(NovaTimeUtils::beatToFrame(beats, sampleRate, 120.0));
+
+        audioRegion->set_fade_in_active(beats > 0.001);
+        audioRegion->set_fade_in_length(fadeSamples);
+        item.fadeInBeats = beats;
+
+        Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {FadeInBeatsRole});
+    }
+}
+
+// ⚡ CONTROL DE FUNDIDO DE SALIDA (FADE OUT)
+void NovaRegionModel::setFadeOutBeats(int regionIndex, double beats)
+{
+    if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
+    auto &item = m_regions[static_cast<size_t>(regionIndex)];
+
+    auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(item.regionPtr);
+    if (audioRegion && m_session) {
+        double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 48000.0;
+        auto fadeSamples = static_cast<ARDOUR::samplecnt_t>(NovaTimeUtils::beatToFrame(beats, sampleRate, 120.0));
+
+        audioRegion->set_fade_out_active(beats > 0.001);
+        audioRegion->set_fade_out_length(fadeSamples);
+        item.fadeOutBeats = beats;
+
+        Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {FadeOutBeatsRole});
+    }
+}
+
+// ⚡ AUTO-NORMALIZACIÓN DE RETORNO CERRADO (1-Toque Estilo Mobile)
+void NovaRegionModel::normalizeClip(int regionIndex)
+{
+    if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
+    auto &item = m_regions[static_cast<size_t>(regionIndex)];
+
+    std::vector<PeakPoint> peaks;
+    if (NovaWaveformCache::getPeaks(item.id, peaks) && !peaks.empty()) {
+        float maxPeak = 0.0001f;
+        for (const auto &p : peaks) {
+            maxPeak = std::max({maxPeak, std::abs(p.min), std::abs(p.max)});
+        }
+
+        constexpr float targetHeadroom = 0.89125f; // -1.0 dBFS (Nivel comercial de estudio)
+        
+        if (maxPeak > 0.001f) {
+            float requiredGainCoeff = targetHeadroom / maxPeak;
+            float targetGainDb = coeffToDb(requiredGainCoeff);
+            
+            // Forzar límite seguro entre -24dB y +24dB
+            targetGainDb = std::clamp(targetGainDb, -24.0f, 24.0f);
+            
+            setClipGainDb(regionIndex, targetGainDb);
+            qCDebug(novaModel) << "⚡ [Auto-Gain] Normalizado clip" << item.name 
+                               << "a" << targetGainDb << "dB. Pico anterior:" << maxPeak;
+        }
+    }
+}
+
 void NovaRegionModel::createLiveRecordingClip(double startBeat)
 {
     int armedTrackIdx = 0;
@@ -474,6 +571,9 @@ void NovaRegionModel::createLiveRecordingClip(double startBeat)
     item.lengthBeats = 0.0;
     item.color = QStringLiteral("#FF3B30");
     item.isLiveRecording = true;
+    item.clipGainDb = 0.0f;
+    item.fadeInBeats = 0.0;
+    item.fadeOutBeats = 0.0;
 
     m_regions.push_back(item);
     m_liveRecordingIndex = row;
@@ -514,7 +614,6 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
                                     
                                     if (baseSamples > 0) {
                                         // 🎙️ AUTO-GAIN TRIM PREVENTIVO (BandLab Style)
-                                        // 1. Escaneo rápido de pico máximo raw en la ventana
                                         float maxRawPeak = 0.0001f;
                                         for (size_t i = 0; i < pointCount; ++i) {
                                             const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples;
@@ -525,7 +624,6 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
                                             }
                                         }
 
-                                        // 2. Si el pico supera -1 dBFS (0.891f), calcular factor de atenuación
                                         float autoGainScale = 1.0f;
                                         constexpr float safeThreshold = 0.891f; // -1 dBFS
                                         constexpr float targetHeadroom = 0.5f;  // -6 dBFS
@@ -534,7 +632,6 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
                                             autoGainScale = targetHeadroom / maxRawPeak;
                                         }
 
-                                        // 3. Procesamiento con Trim Preventivo + Soft Clip
                                         for (size_t i = 0; i < pointCount; ++i) {
                                             const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples;
                                             const auto read = source->read(buffer.data(), first, std::min(baseSamples, bufferSize), 0);
@@ -543,7 +640,6 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
                                             float low = 0.0f, high = 0.0f;
                                             bool found = false;
                                             for (ARDOUR::samplecnt_t s = 0; s < read; ++s) {
-                                                // Aplicar Auto-Gain Scale + Soft Clipper
                                                 float scaledValue = static_cast<float>(buffer[static_cast<size_t>(s)]) * autoGainScale;
                                                 float v = applySoftClip(scaledValue);
 
@@ -628,11 +724,35 @@ void NovaRegionModel::rebuildRegionCache()
                         item.color = QStringLiteral("#4A90E2");
                         item.isLiveRecording = false;
 
+                        // Cargar valores de fundidos y ganancia digital nativa de Ardour
+                        auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(reg);
+                        if (audioRegion) {
+                            item.clipGainDb = coeffToDb(audioRegion->scale_amplitude());
+                            
+                            if (audioRegion->fade_in_active()) {
+                                double fadeInSamples = static_cast<double>(audioRegion->fade_in_length().samples());
+                                item.fadeInBeats = std::max(0.0, NovaTimeUtils::frameToBeat(fadeInSamples, sampleRate, 120.0));
+                            } else {
+                                item.fadeInBeats = 0.0;
+                            }
+
+                            if (audioRegion->fade_out_active()) {
+                                double fadeOutSamples = static_cast<double>(audioRegion->fade_out_length().samples());
+                                item.fadeOutBeats = std::max(0.0, NovaTimeUtils::frameToBeat(fadeOutSamples, sampleRate, 120.0));
+                            } else {
+                                item.fadeOutBeats = 0.0;
+                            }
+                        } else {
+                            item.clipGainDb = 0.0f;
+                            item.fadeInBeats = 0.0;
+                            item.fadeOutBeats = 0.0;
+                        }
+
                         std::vector<PeakPoint> cachedPeaks;
                         if (!NovaWaveformCache::getPeaks(item.id, cachedPeaks)) {
                             QString peakFile = sessionPeaksDir + "/" + item.id + ".novapeak";
                             if (!loadPeakFile(peakFile, cachedPeaks)) {
-                                if (auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(reg)) {
+                                if (audioRegion) {
                                     cachedPeaks = buildRegionPeaks(audioRegion);
                                     savePeakFile(peakFile, cachedPeaks);
                                 }

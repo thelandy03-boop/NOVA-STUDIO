@@ -60,6 +60,9 @@ struct NovaRegionItem {
     double lengthBeats = 0.0;
     QString color = "#4A90E2";
     bool isLiveRecording = false;
+    float clipGainDb = 0.0f;       // 🔊 Clip Gain en dB
+    double fadeInBeats = 0.0;     // ⚡ Longitud del Fade In en Beats
+    double fadeOutBeats = 0.0;    // ⚡ Longitud del Fade Out en Beats
     std::shared_ptr<ARDOUR::Region> regionPtr;
 
     std::vector<PeakPoint> ramPeaks;
@@ -79,7 +82,10 @@ public:
         StartBeatRole,
         LengthBeatsRole,
         ColorRole,
-        IsLiveRecordingRole
+        IsLiveRecordingRole,
+        ClipGainDbRole,     // 🔊 Rol de Ganancia
+        FadeInBeatsRole,    // ⚡ Rol Fade In
+        FadeOutBeatsRole    // ⚡ Rol Fade Out
     };
     Q_ENUM(RegionRoles)
 
@@ -98,6 +104,12 @@ public:
     Q_INVOKABLE bool moveRegion(int regionIndex, double newStartBeat);
     Q_INVOKABLE bool resizeRegion(int regionIndex, double newStartBeat, double newLengthBeats);
     Q_INVOKABLE void removeRegion(int regionIndex);
+
+    // 🎙️ Métodos dinámicos de control para el usuario
+    Q_INVOKABLE void setClipGainDb(int regionIndex, float dB);
+    Q_INVOKABLE void setFadeInBeats(int regionIndex, double beats);
+    Q_INVOKABLE void setFadeOutBeats(int regionIndex, double beats);
+    Q_INVOKABLE void normalizeClip(int regionIndex); // ⚡ Auto-Normalize móvil en 1-toque
 
     // 🎙️ Grabación en vivo
     void createLiveRecordingClip(double startBeat);

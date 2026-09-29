@@ -190,8 +190,9 @@ void NovaTrackListModel::addAudioTrack(const QString &name)
                 if (auto track = std::dynamic_pointer_cast<ARDOUR::Track>(route)) {
                     track->ensure_input_monitoring(false);
                 }
+                // 🎛️ Headroom de estudio preventivo (-3 dBFS / 0.707f) estilo FL Studio
                 if (route->gain_control()) {
-                    route->gain_control()->set_value(1.0f, PBD::Controllable::NoGroup);
+                    route->gain_control()->set_value(0.7079f, PBD::Controllable::NoGroup);
                 }
             }
         }
