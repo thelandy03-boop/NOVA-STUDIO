@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 
 #include "core/NovaSessionManager.h"
 #include "core/NovaTransportController.h"
@@ -32,10 +33,16 @@ class NovaAudioEngine : public QObject
     Q_PROPERTY(double loopStartBeat READ loopStartBeat NOTIFY loopRangeChanged)
     Q_PROPERTY(double loopEndBeat READ loopEndBeat NOTIFY loopRangeChanged)
 
-    // 🎛️ MEDIDOR MASTER ESTÉREO FL STUDIO (Picos L/R + Volumen Master)
+    // 🎛️ MEDIDOR MASTER ESTÉREO FL STUDIO
     Q_PROPERTY(float masterPeakLeft READ masterPeakLeft NOTIFY masterPeaksChanged)
     Q_PROPERTY(float masterPeakRight READ masterPeakRight NOTIFY masterPeaksChanged)
     Q_PROPERTY(float masterVolumeDb READ masterVolumeDb WRITE setMasterVolumeDb NOTIFY masterVolumeDbChanged)
+
+    // 💾 GESTIÓN DE PROYECTOS Y SESIONES
+    Q_PROPERTY(bool isDirty READ isDirty NOTIFY isDirtyChanged)
+    Q_PROPERTY(QVariantList recentProjects READ recentProjects NOTIFY recentProjectsChanged)
+    Q_PROPERTY(QString currentProjectName READ currentProjectName NOTIFY currentProjectChanged)
+    Q_PROPERTY(QString currentProjectPath READ currentProjectName NOTIFY currentProjectChanged)
 
 public:
     explicit NovaAudioEngine(QObject *parent = nullptr);
@@ -46,6 +53,7 @@ public:
     Q_INVOKABLE double beatToPixel(double beat, double barWidth = 80.0) const { return NovaTimeUtils::beatToPixel(beat, barWidth); }
     Q_INVOKABLE double pixelToBeat(double pixelX, double barWidth = 80.0) const { return NovaTimeUtils::pixelToBeat(pixelX, barWidth); }
 
+    // Control de Transporte básico
     Q_INVOKABLE void play() { m_transport.play(); }
     Q_INVOKABLE void stop() { m_transport.stop(); }
     Q_INVOKABLE void rewind() { m_transport.rewind(); }
@@ -59,6 +67,13 @@ public:
     Q_INVOKABLE void setLoopEnabled(bool enabled) { m_transport.setLoopEnabled(enabled); }
     Q_INVOKABLE void toggleLoop() { m_transport.toggleLoop(); }
 
+    // 💾 MÉTODOS DE PROYECTOS EXPUESTOS A QML
+    Q_INVOKABLE bool saveProject();
+    Q_INVOKABLE bool openProject(const QString &path);
+    Q_INVOKABLE bool newProject(const QString &name, const QString &parentDir);
+    Q_INVOKABLE void closeProject();
+
+    // Getters
     bool isPlaying() const { return m_transport.isPlaying(); }
     bool isRecording() const { return m_recorder.isRecording(); }
     QString timecode() const { return m_transport.timecode(); }
@@ -75,11 +90,17 @@ public:
     double loopStartBeat() const { return m_transport.loopStartBeat(); }
     double loopEndBeat() const { return m_transport.loopEndBeat(); }
 
-    // 🎙️ Picos Master y Fader General
+    // Master faders y medidores
     float masterPeakLeft() const;
     float masterPeakRight() const;
     float masterVolumeDb() const;
     Q_INVOKABLE void setMasterVolumeDb(float dB);
+
+    // Getters de Sesión / Proyectos
+    bool isDirty() const { return m_sessionManager.isDirty(); }
+    QVariantList recentProjects() const { return m_sessionManager.getRecentProjects(); }
+    QString currentProjectName() const;
+    QString currentProjectPath() const;
 
 signals:
     void isPlayingChanged();
@@ -95,6 +116,11 @@ signals:
     void masterPeaksChanged();
     void masterVolumeDbChanged();
 
+    // Señales de guardado y carga
+    void isDirtyChanged();
+    void recentProjectsChanged();
+    void currentProjectChanged();
+
 private:
     NovaSessionManager m_sessionManager;
     NovaTransportController m_transport;
@@ -103,6 +129,8 @@ private:
 
     NovaTrackListModel *m_trackModel = nullptr;
     NovaRegionModel *m_regionModel = nullptr;
+
+    void connectSessionSignals();
 };
 
 #endif // NOVAAUDIOENGINE_H

@@ -6,6 +6,8 @@
 #include "models/NovaRegionModel.h"
 #include "views/NovaWaveformItem.h"
 #include <QDebug>
+#include <QFileInfo>
+#include <QDir>
 #include <cmath>
 #include <algorithm>
 
@@ -28,7 +30,6 @@
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
 
-// ── STUBS GLOBALES VST PARA RESOLVER SÍMBOLOS DE LINKER EN LIBARDOUR.SO ──
 struct _VSTState;
 int vstfx_init(void*) { return 0; }
 void vstfx_exit() {}
@@ -40,18 +41,21 @@ NovaAudioEngine::NovaAudioEngine(QObject *parent)
     m_trackModel = new NovaTrackListModel(this);
     m_regionModel = new NovaRegionModel(this);
 
-    // Conectar señales del transporte
+    // Conexión del transporte a la UI (60 FPS tick)
     connect(&m_transport, &NovaTransportController::isPlayingChanged, this, &NovaAudioEngine::isPlayingChanged);
     connect(&m_transport, &NovaTransportController::timecodeChanged, this, &NovaAudioEngine::timecodeChanged);
     connect(&m_transport, &NovaTransportController::bbtChanged, this, &NovaAudioEngine::bbtChanged);
     connect(&m_transport, &NovaTransportController::positionChanged, this, &NovaAudioEngine::positionChanged);
-    connect(&m_transport, &NovaTransportController::positionChanged, this, &NovaAudioEngine::masterPeaksChanged); // 60 FPS tick de vúmetro
+    connect(&m_transport, &NovaTransportController::positionChanged, this, &NovaAudioEngine::masterPeaksChanged); 
     connect(&m_transport, &NovaTransportController::bpmChanged, this, &NovaAudioEngine::bpmChanged);
     connect(&m_transport, &NovaTransportController::loopEnabledChanged, this, &NovaAudioEngine::loopEnabledChanged);
     connect(&m_transport, &NovaTransportController::loopRangeChanged, this, &NovaAudioEngine::loopRangeChanged);
 
-    // Conectar señales del grabador
+    // Conectar el grabador de pistas
     connect(&m_recorder, &NovaRecordManager::isRecordingChanged, this, &NovaAudioEngine::isRecordingChanged);
+
+    // Conectar señales del administrador de sesiones
+    connect(&m_sessionManager, &NovaSessionManager::recentProjectsChanged, this, &NovaAudioEngine::recentProjectsChanged);
 }
 
 NovaAudioEngine::~NovaAudioEngine()
@@ -63,16 +67,22 @@ NovaAudioEngine::~NovaAudioEngine()
 
 bool NovaAudioEngine::initEngine()
 {
-    // 🛡️ 1. Sanitización de Hardware ALSA en segundo plano (Estilo BandLab/FL Studio)
+    // 🛡️ Sanitización preventiva de hardware al arrancar
     NovaHardwareSanitizer::sanitize();
 
-    // 🚀 2. Inicializar sesión y subsistemas de Ardour Core
+    // Inicializar el subsistema del administrador de proyectos
     bool ok = m_sessionManager.initSession();
     if (!ok) {
-        qCCritical(novaCore) << "Fallo al inicializar la sesión de audio.";
+        qCCritical(novaCore) << "Fallo fatal al arrancar m_sessionManager.";
         return false;
     }
 
+    connectSessionSignals();
+    return true;
+}
+
+void NovaAudioEngine::connectSessionSignals()
+{
     auto session = m_sessionManager.session();
     if (session) {
         m_transport.setSession(session);
@@ -83,14 +93,75 @@ bool NovaAudioEngine::initEngine()
         m_regionModel->setSession(session);
         m_deviceManager.setEngine(m_sessionManager.engine());
 
-        // 🚀 Sincronizar el renderizador de formas de onda con la sesión activa
+        // Conectar el renderizador global de formas de onda
         NovaWaveformItem::setSession(session);
 
-        qCDebug(novaCore) << "🚀 Arquitectura Modular Inicializada con Éxito con Motor Real.";
-        return true;
+        // Notificar cambios del proyecto a la interfaz
+        Q_EMIT currentProjectChanged();
+        Q_EMIT isDirtyChanged();
+        Q_EMIT tracksChanged();
+        Q_EMIT regionsChanged();
     }
+}
 
-    return false;
+// 💾 GUARDAR EL PROYECTO ACTUAL (DESDE BOTÓN O CTRL + S)
+bool NovaAudioEngine::saveProject()
+{
+    bool ok = m_sessionManager.saveSession();
+    if (ok) {
+        Q_EMIT isDirtyChanged();
+    }
+    return ok;
+}
+
+// 📂 CARGAR UN PROYECTO EXISTENTE DESDE DISCO
+bool NovaAudioEngine::openProject(const QString &path)
+{
+    qCDebug(novaCore) << "🔊 Solicitada apertura del proyecto en:" << path;
+    bool ok = m_sessionManager.loadSession(path);
+    if (ok) {
+        connectSessionSignals();
+    }
+    return ok;
+}
+
+// 🆕 CREAR UN NUEVO PROYECTO LIMPIO
+bool NovaAudioEngine::newProject(const QString &name, const QString &parentDir)
+{
+    qCDebug(novaCore) << "🔊 Creando nuevo proyecto comercial:" << name << "en:" << parentDir;
+    bool ok = m_sessionManager.createNewSession(name, parentDir);
+    if (ok) {
+        connectSessionSignals();
+    }
+    return ok;
+}
+
+// 🚪 CERRAR EL PROYECTO ACTIVO Y LIBERAR RECURSOS
+void NovaAudioEngine::closeProject()
+{
+    qCDebug(novaCore) << "🚪 Liberando proyecto y retornando a la Start Screen...";
+    m_transport.setSession(nullptr);
+    m_recorder.setSession(nullptr);
+    m_trackModel->setSession(nullptr);
+    m_regionModel->setSession(nullptr);
+    m_sessionManager.closeCurrentSession();
+    
+    Q_EMIT currentProjectChanged();
+    Q_EMIT isDirtyChanged();
+}
+
+QString NovaAudioEngine::currentProjectName() const
+{
+    auto session = m_sessionManager.session();
+    if (!session) return QStringLiteral("No Project");
+    return QString::fromStdString(session->name());
+}
+
+QString NovaAudioEngine::currentProjectPath() const
+{
+    auto session = m_sessionManager.session();
+    if (!session) return QString();
+    return QString::fromStdString(session->path());
 }
 
 float NovaAudioEngine::masterPeakLeft() const
