@@ -1,15 +1,16 @@
 #include "NovaHardwareSanitizer.h"
 #include "NovaLogging.h"
 #include <QDebug>
+#include <QtGlobal>
 
-#ifdef __linux__
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
 #include <alsa/asoundlib.h>
 #endif
 
 void NovaHardwareSanitizer::sanitize()
 {
-#ifdef __linux__
-    qCDebug(novaCore) << "🎙️ [Sanitizer] Verificando aislamiento de hardware...";
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+    qCDebug(novaCore) << "🎙️ [Sanitizer] Verificando aislamiento de hardware ALSA...";
 
     int cardNum = -1;
     while (snd_card_next(&cardNum) == 0 && cardNum >= 0) {
@@ -39,7 +40,7 @@ void NovaHardwareSanitizer::sanitize()
             }
             // 🚫 Desactivar Loopback Mixing analógico de silicio
             else if (sName == "Loopback Mixing") {
-                if (snd_mixer_selem_is_enumerated(elem)) {
+                if (snd_mixer_selem_get_enum_items(elem) > 0) {
                     int items = snd_mixer_selem_get_enum_items(elem);
                     for (int i = 0; i < items; ++i) {
                         char itemName[64];

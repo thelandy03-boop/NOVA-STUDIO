@@ -1,6 +1,9 @@
 #include "NovaAudioDeviceManager.h"
 #include "NovaLogging.h"
 
+#if defined(Q_OS_ANDROID)
+#include "platform/NovaAndroidStubs.h"
+#else
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -17,11 +20,17 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 NovaAudioDeviceManager::NovaAudioDeviceManager(QObject *parent)
     : QObject(parent)
 {
+#if defined(Q_OS_ANDROID)
+    m_availableBackends << "AAudio" << "OpenSL ES" << "None (Dummy)";
+    m_activeBackend = QStringLiteral("AAudio");
+#else
     m_availableBackends << "ALSA" << "JACK" << "PulseAudio" << "None (Dummy)";
+#endif
 }
 
 void NovaAudioDeviceManager::setEngine(ARDOUR::AudioEngine *engine)
@@ -38,6 +47,12 @@ bool NovaAudioDeviceManager::switchBackend(const QString &backendName)
 
     qCDebug(novaCore) << "Intentando cambiar backend a:" << backendName;
 
+#if defined(Q_OS_ANDROID)
+    m_activeBackend = backendName;
+    Q_EMIT activeBackendChanged();
+    refreshDevices();
+    return true;
+#else
     try {
         std::shared_ptr<ARDOUR::AudioBackend> newBackend = m_engine->set_backend(backendName.toStdString(), "NOVA-Studio", "");
         if (!newBackend) {
@@ -59,6 +74,7 @@ bool NovaAudioDeviceManager::switchBackend(const QString &backendName)
         qCCritical(novaCore) << "Excepción al cambiar backend:" << e.what();
         return false;
     }
+#endif
 }
 
 void NovaAudioDeviceManager::refreshDevices()
@@ -68,6 +84,10 @@ void NovaAudioDeviceManager::refreshDevices()
     m_inputDevices.clear();
     m_outputDevices.clear();
 
+#if defined(Q_OS_ANDROID)
+    m_inputDevices << "Micrófono Android (AAudio)" << "Entrada de Audio Móvil";
+    m_outputDevices << "Altavoces Android (AAudio)" << "Salida Auriculares / USB-C";
+#else
     auto currentBackend = m_engine->current_backend();
     if (currentBackend) {
         m_activeBackend = QString::fromStdString(m_engine->current_backend_name());
@@ -104,6 +124,7 @@ void NovaAudioDeviceManager::refreshDevices()
     if (m_outputDevices.isEmpty()) {
         m_outputDevices << "Default Hardware Output" << "Altavoces Sistema (ALSA/PipeWire)";
     }
+#endif
 
     Q_EMIT devicesChanged();
     Q_EMIT activeBackendChanged();
@@ -116,6 +137,10 @@ void NovaAudioDeviceManager::refreshDevices()
 bool NovaAudioDeviceManager::setInputDevice(const QString &deviceName)
 {
     if (!m_engine) return false;
+#if defined(Q_OS_ANDROID)
+    qCDebug(novaCore) << "Dispositivo de entrada Android establecido en:" << deviceName;
+    return true;
+#else
     auto backend = m_engine->current_backend();
     if (backend) {
         backend->set_input_device_name(deviceName.toStdString());
@@ -123,11 +148,16 @@ bool NovaAudioDeviceManager::setInputDevice(const QString &deviceName)
         return true;
     }
     return false;
+#endif
 }
 
 bool NovaAudioDeviceManager::setOutputDevice(const QString &deviceName)
 {
     if (!m_engine) return false;
+#if defined(Q_OS_ANDROID)
+    qCDebug(novaCore) << "Dispositivo de salida Android establecido en:" << deviceName;
+    return true;
+#else
     auto backend = m_engine->current_backend();
     if (backend) {
         backend->set_output_device_name(deviceName.toStdString());
@@ -135,6 +165,7 @@ bool NovaAudioDeviceManager::setOutputDevice(const QString &deviceName)
         return true;
     }
     return false;
+#endif
 }
 
 bool NovaAudioDeviceManager::setSampleRate(int rate)
@@ -144,10 +175,12 @@ bool NovaAudioDeviceManager::setSampleRate(int rate)
 
     if (m_engine) {
         m_engine->set_sample_rate(m_sampleRate);
+#if !defined(Q_OS_ANDROID)
         auto backend = m_engine->current_backend();
         if (backend) {
             backend->set_sample_rate(static_cast<float>(m_sampleRate));
         }
+#endif
     }
 
     Q_EMIT audioConfigChanged();
@@ -162,10 +195,12 @@ bool NovaAudioDeviceManager::setBufferSize(int size)
 
     if (m_engine) {
         m_engine->set_buffer_size(m_bufferSize);
+#if !defined(Q_OS_ANDROID)
         auto backend = m_engine->current_backend();
         if (backend) {
             backend->set_buffer_size(m_bufferSize);
         }
+#endif
     }
 
     Q_EMIT audioConfigChanged();

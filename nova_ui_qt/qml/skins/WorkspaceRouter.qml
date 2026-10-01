@@ -7,15 +7,16 @@ Loader {
 
     source: {
         switch (Theme.activeSkin) {
-        case "reaper":
-            return Qt.resolvedUrl("reaper/ReaperWorkspace.qml")
+        case "logic":
+            return Qt.resolvedUrl("logic/LogicWorkspace.qml")
         case "bandlab":
             return Qt.resolvedUrl("bandlab/BandLabWorkspace.qml")
-        default:
+        case "reaper":
+            return Qt.resolvedUrl("reaper/ReaperWorkspace.qml")
+        case "draft":
             return Qt.resolvedUrl("draft/DraftWorkspace.qml")
-
-            case "logic":
-    return Qt.resolvedUrl("logic/LogicWorkspace.qml")
+        default:
+            return Qt.resolvedUrl("logic/LogicWorkspace.qml")
         }
     }
 }

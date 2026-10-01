@@ -12,6 +12,7 @@
 #include <cmath>
 #include <algorithm>
 
+#if !defined(Q_OS_ANDROID)
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -30,6 +31,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 struct _VSTState;
 int vstfx_init(void*) { return 0; }
@@ -217,6 +219,9 @@ QString NovaAudioEngine::currentProjectPath() const
 
 float NovaAudioEngine::masterPeakLeft() const
 {
+#if defined(Q_OS_ANDROID)
+    return 0.0f;
+#else
     auto session = m_sessionManager.session();
     if (!session) return 0.0f;
 
@@ -229,10 +234,14 @@ float NovaAudioEngine::masterPeakLeft() const
     float val = meter->meter_level(0, ARDOUR::MeterPeak);
     if (std::isnan(val) || std::isinf(val) || val < 0.0f) return 0.0f;
     return val;
+#endif
 }
 
 float NovaAudioEngine::masterPeakRight() const
 {
+#if defined(Q_OS_ANDROID)
+    return 0.0f;
+#else
     auto session = m_sessionManager.session();
     if (!session) return 0.0f;
 
@@ -245,10 +254,14 @@ float NovaAudioEngine::masterPeakRight() const
     float val = meter->meter_level(1, ARDOUR::MeterPeak);
     if (std::isnan(val) || std::isinf(val) || val < 0.0f) return 0.0f;
     return val;
+#endif
 }
 
 float NovaAudioEngine::masterVolumeDb() const
 {
+#if defined(Q_OS_ANDROID)
+    return 0.0f;
+#else
     auto session = m_sessionManager.session();
     if (!session) return 0.0f;
 
@@ -261,10 +274,12 @@ float NovaAudioEngine::masterVolumeDb() const
     float coeff = static_cast<float>(gc->get_value());
     if (coeff <= 0.0000001f) return -192.0f;
     return 20.0f * std::log10(coeff);
+#endif
 }
 
 void NovaAudioEngine::setMasterVolumeDb(float dB)
 {
+#if !defined(Q_OS_ANDROID)
     auto session = m_sessionManager.session();
     if (!session) return;
 
@@ -277,4 +292,7 @@ void NovaAudioEngine::setMasterVolumeDb(float dB)
         gc->set_value(coeff, PBD::Controllable::NoGroup);
         Q_EMIT masterVolumeDbChanged();
     }
+#else
+    Q_UNUSED(dB);
+#endif
 }

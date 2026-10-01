@@ -5,6 +5,9 @@
 #include <QDebug>
 #include <algorithm>
 
+#if defined(Q_OS_ANDROID)
+#include "platform/NovaAndroidStubs.h"
+#else
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -22,6 +25,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 NovaRecordManager::NovaRecordManager(QObject *parent)
     : QObject(parent)
@@ -56,6 +60,36 @@ void NovaRecordManager::toggleRecord()
         return;
     }
 
+#if defined(Q_OS_ANDROID)
+    const bool alreadyRecording = m_isRecording || m_liveRegionActive;
+
+    if (alreadyRecording) {
+        m_isRecording = false;
+        m_liveRegionActive = false;
+
+        if (m_transport) {
+            m_transport->stop();
+        }
+
+        if (m_regionModel) {
+            m_regionModel->finalizeLiveRecordingClip();
+        }
+
+        Q_EMIT isRecordingChanged();
+        qCDebug(novaRecord) << "Grabación detenida limpiamente (STOP Android).";
+        return;
+    }
+
+    m_isRecording = true;
+    m_liveRegionActive = false;
+
+    if (m_transport) {
+        m_transport->play();
+    }
+
+    Q_EMIT isRecordingChanged();
+    qCDebug(novaRecord) << "Grabación en vivo iniciada (ROLL Android).";
+#else
     const bool alreadyRecording = m_isRecording || m_session->get_record_enabled() || m_liveRegionActive;
 
     if (alreadyRecording) {
@@ -115,6 +149,7 @@ void NovaRecordManager::toggleRecord()
 
     Q_EMIT isRecordingChanged();
     qCDebug(novaRecord) << "Grabación en vivo iniciada (ROLL).";
+#endif
 }
 
 void NovaRecordManager::onPositionChanged()
@@ -146,9 +181,11 @@ void NovaRecordManager::onTransportStopped()
     m_liveRegionActive = false;
     m_isRecording = false;
 
+#if !defined(Q_OS_ANDROID)
     if (m_session && m_session->get_record_enabled()) {
         m_session->disable_record(false, false);
     }
+#endif
 
     if (m_regionModel) {
         m_regionModel->finalizeLiveRecordingClip();

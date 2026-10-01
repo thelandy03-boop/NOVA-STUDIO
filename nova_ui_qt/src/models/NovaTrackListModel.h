@@ -6,9 +6,13 @@
 #include <QString>
 #include <QVariant>
 #include <QMetaObject>
+#include <QtGlobal>
 #include <vector>
 #include <memory>
 
+#if defined(Q_OS_ANDROID)
+#include "core/platform/NovaAndroidStubs.h"
+#else
 // ── PROTECCIÓN CONTRA COLISIONES DE SEÑALES ARDOUR/QT ────────────────
 #pragma push_macro("emit")
 #pragma push_macro("slots")
@@ -28,6 +32,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 // ─────────────────────────────────────────────────────────────────────
 
 class NovaTrackListModel : public QAbstractListModel

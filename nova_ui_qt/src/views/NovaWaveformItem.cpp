@@ -1,6 +1,8 @@
 #include "NovaWaveformItem.h"
-#include "../models/NovaRegionModel.h"
-#include "../core/NovaLogging.h"
+#include "models/NovaRegionModel.h"
+#include "core/NovaLogging.h"
+#include "core/platform/NovaAndroidStubs.h"
+
 #include <QPainter>
 #include <QPainterPath>
 #include <QColor>
@@ -8,6 +10,7 @@
 #include <algorithm>
 #include <vector>
 
+#if !defined(Q_OS_ANDROID)
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -27,6 +30,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 NovaWaveformItem::NovaWaveformItem(QQuickItem *parent)
     : QQuickPaintedItem(parent)
@@ -76,7 +80,7 @@ void NovaWaveformItem::paint(QPainter *painter)
         hasData = NovaWaveformCache::getPeaks(m_regionId, ramPeaks);
     }
 
-    // 🚀 2. FALLBACK POR ÍNDICE EN LA SESIÓN DE ARDOUR (Si no se pasó regionId explícito)
+    // 🚀 2. FALLBACK POR ÍNDICE EN LA SESIÓN (Si no se pasó regionId explícito)
     if (!hasData && m_regionIndex >= 0 && s_session) {
         auto routeList = s_session->get_routes();
         if (routeList) {

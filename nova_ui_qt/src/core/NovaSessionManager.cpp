@@ -1,12 +1,16 @@
 #include "NovaSessionManager.h"
 #include "NovaLogging.h"
 #include "NovaProjectManager.h"
+#include "platform/NovaPlatformUtils.h"
+#include "platform/NovaAndroidStubs.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <thread>
 #include <chrono>
 
+#if !defined(Q_OS_ANDROID)
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -27,6 +31,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 NovaSessionManager::NovaSessionManager(QObject *parent)
     : QObject(parent)
@@ -45,6 +50,7 @@ bool NovaSessionManager::initSession()
     qCDebug(novaCore) << "Inicializando subsistemas PBD y Ardour Core...";
 
     try {
+#if !defined(Q_OS_ANDROID)
         if (!ARDOUR::init(true, nullptr, true)) {
             qCCritical(novaCore) << "Error al inicializar subsistemas globales ARDOUR::init";
             return false;
@@ -89,6 +95,12 @@ bool NovaSessionManager::initSession()
         }
 
         qCDebug(novaCore) << "🔊 Conectado exitosamente al servidor PipeWire-JACK!";
+#else
+        qCDebug(novaCore) << "📱 Inicializando subsistema C++ para Android...";
+        if (!m_engine) {
+            m_engine = ARDOUR::AudioEngine::create();
+        }
+#endif
         return true;
 
     } catch (const std::exception &e) {

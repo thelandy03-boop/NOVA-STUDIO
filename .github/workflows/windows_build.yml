@@ -1,0 +1,93 @@
+name: 🪟 Windows Build CI/CD (NOVA Studio)
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: ⚡ Generar Instalador .EXE para Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: 📥 Clonar Repositorio
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⚙️ Configurar Entorno de Compilación (Ninja & MSVC)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: 📦 Instalar Qt 6.8 (MSVC 2022 x64)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtquickcontrols2'
+          cache: true
+
+      - name: 🔨 Generar archivos con CMake
+        run: |
+          cmake -B build -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -S nova_ui_qt
+
+      - name: 🚀 Compilar NOVA Studio (.exe)
+        run: |
+          cmake --build build --config Release -j 4
+
+      - name: 📦 Empaquetar Librerías y QML con windeployqt
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist/NovaStudio"
+          Copy-Item -Path "build/nova_ui_qt.exe" -Destination "dist/NovaStudio/NovaStudio.exe"
+          
+          windeployqt --qmldir nova_ui_qt/qml `
+                      --plugindir dist/NovaStudio/plugins `
+                      --no-translations `
+                      --compiler-runtime `
+                      dist/NovaStudio/NovaStudio.exe
+
+      - name: 🧙 Crear Script de Inno Setup (.iss)
+        shell: pwsh
+        run: |
+          $issContent = @"
+          [Setup]
+          AppName=NOVA Studio
+          AppVersion=1.0.0
+          DefaultDirName={autopf}\NovaStudio
+          DefaultGroupName=NOVA Studio
+          OutputDir=.
+          OutputBaseFilename=NovaStudio-Setup-x64
+          Compression=lzma2/ultra64
+          SolidCompression=yes
+          ArchitecturesInstallIn64BitMode=x64
+          WizardStyle=modern
+
+          [Files]
+          Source: "dist\NovaStudio\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\NOVA Studio"; Filename: "{app}\NovaStudio.exe"
+          Name: "{autodesktop}\NOVA Studio"; Filename: "{app}\NovaStudio.exe"
+
+          [Run]
+          Filename: "{app}\NovaStudio.exe"; Description: "Ejecutar NOVA Studio ahora"; Flags: nowait postinstall skipifsilent
+          "@
+          Set-Content -Path "installer.iss" -Value $issContent
+
+      - name: 🏗️ Compilar Instalador .EXE con Inno Setup
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: 📤 Subir Instalador .EXE Directo
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaStudio-Windows-Installer
+          path: NovaStudio-Setup-x64.exe
+          retention-days: 14

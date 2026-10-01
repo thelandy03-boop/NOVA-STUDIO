@@ -25,14 +25,33 @@ QString NovaPlatformUtils::sanitizePath(const QString &rawPath)
 {
     if (rawPath.isEmpty()) return QString();
 
-    QString path = rawPath;
-    if (path.startsWith("file://")) {
-        path = QUrl(path).toLocalFile();
-    } else if (path.startsWith("file:/")) {
-        path = QUrl(path).toLocalFile();
+    // 1. Primero decodificar percent-encoding (resuelve %20, %2F, %3A, etc.)
+    QString path = QUrl::fromPercentEncoding(rawPath.toUtf8());
+
+    // 2. Si contiene el esquema "file:", extraer la ruta local absoluta de forma robusta
+    if (path.startsWith("file:", Qt::CaseInsensitive)) {
+        QUrl url(path);
+        if (url.isValid() && url.isLocalFile()) {
+            path = url.toLocalFile();
+        } else {
+            // Limpieza manual de seguridad si el esquema de QUrl falla
+            path.remove(0, 5); // Quita "file:"
+            
+            // Reemplazar diagonales dobles iniciales de esquemas como file:// o file:///
+            while (path.startsWith("//")) {
+                path.remove(0, 1);
+            }
+            
+            // Garantizar que en Linux/Android empiece con un solo "/"
+#if !defined(Q_OS_WIN)
+            if (!path.startsWith("/")) {
+                path = "/" + path;
+            }
+#endif
+        }
     }
 
-    path = QUrl::fromPercentEncoding(path.toUtf8());
+    // 3. Normalizar la ruta final del sistema de archivos
     return QDir::cleanPath(path);
 }
 

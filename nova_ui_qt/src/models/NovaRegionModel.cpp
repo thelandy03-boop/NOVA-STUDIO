@@ -1,6 +1,9 @@
 #include "NovaRegionModel.h"
 #include "core/NovaLogging.h"
 #include "core/NovaTimeUtils.h"
+#include "core/platform/NovaPlatformUtils.h"
+#include "core/platform/NovaAndroidStubs.h"
+
 #include <QFileInfo>
 #include <QDateTime>
 #include <QDir>
@@ -12,6 +15,7 @@
 #include <fstream>
 #include <cstring>
 
+#if !defined(Q_OS_ANDROID)
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -37,6 +41,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 inline float applySoftClip(float x) noexcept
 {
@@ -69,9 +74,6 @@ static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::Aud
 
     const auto length = region->length_samples();
     if (length <= 0 || length > 100000000000LL) return result;
-
-    qCDebug(novaModel) << "🔊 [DSP] Calculando peaks HD para la región:" << QString::fromStdString(region->name()) 
-                       << "Duración:" << length << "muestras.";
 
     for (uint32_t channel = 0; channel < region->n_channels(); ++channel) {
         auto source = region->audio_source(channel);
@@ -191,7 +193,6 @@ void NovaRegionModel::setSession(ARDOUR::Session *session)
     endResetModel();
 
     if (m_session) {
-        qCDebug(novaModel) << "🟢 Sincronizando NovaRegionModel con nueva sesión de Ardour...";
         rebuildRegionCache();
     }
 
@@ -288,10 +289,7 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
 {
     if (!m_session) return false;
 
-    const QUrl fileUrl(filePath);
-    QString cleanPath = fileUrl.isLocalFile() ? fileUrl.toLocalFile() : filePath;
-    if (cleanPath.startsWith("file://")) cleanPath = QUrl(cleanPath).toLocalFile();
-
+    QString cleanPath = NovaPlatformUtils::sanitizePath(filePath);
     QFileInfo fileInfo(cleanPath);
     if (!fileInfo.exists()) return false;
 
@@ -318,14 +316,6 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
             ARDOUR::ImportStatus status;
             status.paths.push_back(cleanPath.toStdString());
             status.quality = ARDOUR::SrcFastest;
-            status.replace_existing_source = false;
-            status.split_midi_channels = false;
-            status.import_markers = false;
-            status.cancel = false;
-            status.done = false;
-            status.all_done = false;
-            status.current = 0;
-            status.total = 1;
 
             m_session->import_files(status);
 
@@ -339,9 +329,6 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
                 plist.add(ARDOUR::Properties::start, Temporal::timepos_t(0));
                 plist.add(ARDOUR::Properties::length, importedSources.front()->length());
                 plist.add(ARDOUR::Properties::name, fileInfo.fileName().toStdString());
-                plist.add(ARDOUR::Properties::layer, 0);
-                plist.add(ARDOUR::Properties::whole_file, true);
-                plist.add(ARDOUR::Properties::opaque, true);
 
                 auto region = ARDOUR::RegionFactory::create(importedSources, plist);
                 if (!region) return;
@@ -349,10 +336,8 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
                 auto playlist = targetTrack->playlist();
                 if (!playlist) return;
 
-                const double sampleRate = m_session->sample_rate() > 0
-                    ? static_cast<double>(m_session->sample_rate()) : 48000.0;
-                const auto startSample = static_cast<ARDOUR::samplepos_t>(
-                    NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
+                const double sampleRate = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 48000.0;
+                const auto startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
                 
                 playlist->add_region(region, Temporal::timepos_t(startSample));
                 m_session->set_dirty();
@@ -528,26 +513,6 @@ void NovaRegionModel::normalizeClip(int regionIndex)
 void NovaRegionModel::createLiveRecordingClip(double startBeat)
 {
     int armedTrackIdx = 0;
-    if (m_session) {
-        auto routeList = m_session->get_routes();
-        if (routeList) {
-            int idx = 0;
-            for (auto &route : *routeList) {
-                if (route && route->is_track()) {
-                    auto track = std::dynamic_pointer_cast<ARDOUR::Track>(route);
-                    if (track) {
-                        auto rec = track->rec_enable_control();
-                        if (rec && rec->get_value() != 0.0f) {
-                            armedTrackIdx = idx;
-                            break;
-                        }
-                    }
-                    idx++;
-                }
-            }
-        }
-    }
-
     int row = static_cast<int>(m_regions.size());
     beginInsertRows(QModelIndex(), row, row);
 
@@ -577,79 +542,6 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
     auto &item = m_regions[static_cast<size_t>(m_liveRecordingIndex)];
     item.lengthBeats = lengthBeats;
 
-    if (m_session) {
-        auto routeList = m_session->get_routes();
-        if (routeList) {
-            for (auto &route : *routeList) {
-                if (route && route->is_track()) {
-                    auto track = std::dynamic_pointer_cast<ARDOUR::AudioTrack>(route);
-                    if (track) {
-                        auto rec = track->rec_enable_control();
-                        if (rec && rec->get_value() != 0.0f) {
-                            auto source = track->write_source(0);
-                            if (source) {
-                                ARDOUR::samplecnt_t length = source->length().samples();
-                                if (length > 200) {
-                                    constexpr size_t pointCount = 1000;
-                                    std::vector<PeakPoint> livePeaks(pointCount, PeakPoint{0.0f, 0.0f, 0.0f});
-                                    
-                                    constexpr ARDOUR::samplecnt_t bufferSize = 4096;
-                                    std::vector<ARDOUR::Sample> buffer(static_cast<size_t>(bufferSize), 0.0f);
-                                    
-                                    const ARDOUR::samplecnt_t baseSamples = length / static_cast<ARDOUR::samplecnt_t>(pointCount);
-                                    
-                                    if (baseSamples > 0) {
-                                        float maxRawPeak = 0.0001f;
-                                        for (size_t i = 0; i < pointCount; ++i) {
-                                            const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples;
-                                            const auto read = source->read(buffer.data(), first, std::min(baseSamples, bufferSize), 0);
-                                            for (ARDOUR::samplecnt_t s = 0; s < read; ++s) {
-                                                float absV = std::abs(static_cast<float>(buffer[static_cast<size_t>(s)]));
-                                                if (absV > maxRawPeak) maxRawPeak = absV;
-                                            }
-                                        }
-
-                                        float autoGainScale = 1.0f;
-                                        constexpr float safeThreshold = 0.891f;
-                                        constexpr float targetHeadroom = 0.5f;
-
-                                        if (maxRawPeak > safeThreshold) {
-                                            autoGainScale = targetHeadroom / maxRawPeak;
-                                        }
-
-                                        for (size_t i = 0; i < pointCount; ++i) {
-                                            const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples;
-                                            const auto read = source->read(buffer.data(), first, std::min(baseSamples, bufferSize), 0);
-                                            if (read <= 0) break;
-
-                                            float low = 0.0f, high = 0.0f;
-                                            bool found = false;
-                                            for (ARDOUR::samplecnt_t s = 0; s < read; ++s) {
-                                                float scaledValue = static_cast<float>(buffer[static_cast<size_t>(s)]) * autoGainScale;
-                                                float v = applySoftClip(scaledValue);
-
-                                                if (!found) { low = high = v; found = true; }
-                                                else {
-                                                    if (v < low) low = v;
-                                                    if (v > high) high = v;
-                                                }
-                                            }
-                                            if (found) {
-                                                livePeaks[i] = {low, high, 0.0f};
-                                            }
-                                        }
-                                        NovaWaveformCache::setPeaks(item.id, livePeaks);
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     Q_EMIT dataChanged(index(m_liveRecordingIndex), index(m_liveRecordingIndex), {LengthBeatsRole});
 }
 
@@ -662,20 +554,9 @@ void NovaRegionModel::finalizeLiveRecordingClip()
     });
 }
 
-// 🚀 RECONSTRUCCIÓN TOTAL Y LECTURA DE REGIONES PERSISTIDAS EN ARDOUR
 void NovaRegionModel::rebuildRegionCache()
 {
     if (!m_session) return;
-
-    qCDebug(novaModel) << "🔍 [REBUILD] Reconstruyendo caché de regiones de la sesión en:" 
-                       << QString::fromStdString(m_session->path());
-
-    std::vector<NovaRegionItem> localPreservedClips;
-    for (const auto &item : m_regions) {
-        if (!item.regionPtr && item.lengthBeats > 0.1 && !item.isLiveRecording) {
-            localPreservedClips.push_back(item);
-        }
-    }
 
     beginResetModel();
     m_regions.clear();
@@ -695,10 +576,6 @@ void NovaRegionModel::rebuildRegionCache()
                 
                 auto regList = track->playlist()->region_list();
                 if (regList) {
-                    qCDebug(novaModel) << "📂 [REBUILD] Track " << trackIdx << ":" 
-                                       << QString::fromStdString(track->name()) 
-                                       << "tiene" << regList->size() << "regiones.";
-
                     for (auto &reg : *regList) {
                         if (!reg) continue;
 
@@ -719,24 +596,6 @@ void NovaRegionModel::rebuildRegionCache()
                         auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(reg);
                         if (audioRegion) {
                             item.clipGainDb = coeffToDb(audioRegion->scale_amplitude());
-                            
-                            if (audioRegion->fade_in_active()) {
-                                double fadeInSamples = static_cast<double>(audioRegion->fade_in_length().samples());
-                                item.fadeInBeats = std::max(0.0, NovaTimeUtils::frameToBeat(fadeInSamples, sampleRate, 120.0));
-                            } else {
-                                item.fadeInBeats = 0.0;
-                            }
-
-                            if (audioRegion->fade_out_active()) {
-                                double fadeOutSamples = static_cast<double>(audioRegion->fade_out_length().samples());
-                                item.fadeOutBeats = std::max(0.0, NovaTimeUtils::frameToBeat(fadeOutSamples, sampleRate, 120.0));
-                            } else {
-                                item.fadeOutBeats = 0.0;
-                            }
-                        } else {
-                            item.clipGainDb = 0.0f;
-                            item.fadeInBeats = 0.0;
-                            item.fadeOutBeats = 0.0;
                         }
 
                         std::vector<PeakPoint> cachedPeaks;
@@ -744,12 +603,9 @@ void NovaRegionModel::rebuildRegionCache()
                             QString peakFile = sessionPeaksDir + "/" + item.id + ".novapeak";
                             if (!loadPeakFile(peakFile, cachedPeaks)) {
                                 if (audioRegion) {
-                                    qCDebug(novaModel) << "⚡ [Peaks] Archivo de pico no encontrado. Generando peaks HD para:" << item.id;
                                     cachedPeaks = buildRegionPeaks(audioRegion);
                                     savePeakFile(peakFile, cachedPeaks);
                                 }
-                            } else {
-                                qCDebug(novaModel) << "🎯 [Peaks] Peaks cargados exitosamente de disco para:" << item.id;
                             }
                             if (!cachedPeaks.empty()) NovaWaveformCache::setPeaks(item.id, cachedPeaks);
                         }
@@ -762,11 +618,6 @@ void NovaRegionModel::rebuildRegionCache()
         }
     }
 
-    for (auto &clip : localPreservedClips) {
-        m_regions.push_back(clip);
-    }
-
     endResetModel();
-    qCDebug(novaModel) << "📊 [REBUILD] Caché de regiones reconstruido con éxito. Total regiones visibles:" << m_regions.size();
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }

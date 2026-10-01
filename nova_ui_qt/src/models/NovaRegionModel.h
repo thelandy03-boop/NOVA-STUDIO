@@ -5,12 +5,16 @@
 #include <QByteArray>
 #include <QString>
 #include <QVariant>
+#include <QtGlobal>
 #include <vector>
 #include <memory>
 #include <mutex>
 #include <map>
 #include <thread>
 
+#if defined(Q_OS_ANDROID)
+#include "core/platform/NovaAndroidStubs.h"
+#else
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -30,6 +34,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 // 🚀 Estructura de Picos en Memoria RAM
 struct PeakPoint {
@@ -58,14 +63,15 @@ struct NovaRegionItem {
     double lengthFrames = 0.0;
     double startBeat = 0.0;
     double lengthBeats = 0.0;
-    QString color = "#4A90E2";
+    QString color = QStringLiteral("#4A90E2");
     bool isLiveRecording = false;
-    float clipGainDb = 0.0f;       // 🔊 Clip Gain en dB
-    double fadeInBeats = 0.0;     // ⚡ Longitud del Fade In en Beats
-    double fadeOutBeats = 0.0;    // ⚡ Longitud del Fade Out en Beats
-    std::shared_ptr<ARDOUR::Region> regionPtr;
 
-    std::vector<PeakPoint> ramPeaks;
+    // Propiedades de Ganancia y Fundidos (Fades)
+    float clipGainDb = 0.0f;
+    double fadeInBeats = 0.0;
+    double fadeOutBeats = 0.0;
+
+    std::shared_ptr<ARDOUR::Region> regionPtr = nullptr;
 };
 
 class NovaRegionModel : public QAbstractListModel
@@ -83,42 +89,39 @@ public:
         LengthBeatsRole,
         ColorRole,
         IsLiveRecordingRole,
-        ClipGainDbRole,     // 🔊 Rol de Ganancia
-        FadeInBeatsRole,    // ⚡ Rol Fade In
-        FadeOutBeatsRole    // ⚡ Rol Fade Out
+        ClipGainDbRole,
+        FadeInBeatsRole,
+        FadeOutBeatsRole
     };
     Q_ENUM(RegionRoles)
 
     explicit NovaRegionModel(QObject *parent = nullptr);
     ~NovaRegionModel() override;
 
-    void waitForImports();
-
     void setSession(ARDOUR::Session *session);
+    void waitForImports();
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE bool importAudioFile(int trackIndex, const QString &filePath, double startBeat = 0.0);
+    Q_INVOKABLE bool importAudioFile(int trackIndex, const QString &filePath, double startBeat);
     Q_INVOKABLE bool moveRegion(int regionIndex, double newStartBeat);
     Q_INVOKABLE bool resizeRegion(int regionIndex, double newStartBeat, double newLengthBeats);
     Q_INVOKABLE void removeRegion(int regionIndex);
 
-    // 🎙️ Métodos dinámicos de control para el usuario
+    // Métodos de Clip Gain, Fades y Normalización
     Q_INVOKABLE void setClipGainDb(int regionIndex, float dB);
     Q_INVOKABLE void setFadeInBeats(int regionIndex, double beats);
     Q_INVOKABLE void setFadeOutBeats(int regionIndex, double beats);
-    Q_INVOKABLE void normalizeClip(int regionIndex); // ⚡ Auto-Normalize móvil en 1-toque
+    Q_INVOKABLE void normalizeClip(int regionIndex); // ⚡ Auto-Gain 1-Toque
 
-    // 🎙️ Grabación en vivo
+    // Control de Grabación en Vivo
     void createLiveRecordingClip(double startBeat);
     void updateLiveRecordingClip(double lengthBeats);
     void finalizeLiveRecordingClip();
 
-    Q_INVOKABLE void rebuildRegionCache();
-
-    // 🚀 Utilidades de Persistencia .novapeak
+    // Persistencia y Manejo de Peaks en Disco (.novapeak)
     static bool savePeakFile(const QString &peakFilePath, const std::vector<PeakPoint> &peaks);
     static bool loadPeakFile(const QString &peakFilePath, std::vector<PeakPoint> &outPeaks);
 
@@ -126,9 +129,12 @@ signals:
     void regionCountChanged(int count);
 
 private:
+    void rebuildRegionCache();
+
     ARDOUR::Session *m_session = nullptr;
     std::vector<NovaRegionItem> m_regions;
     PBD::ScopedConnectionList m_sessionConnections;
-    int m_liveRecordingIndex = -1;
     std::vector<std::thread> m_importThreads;
+
+    int m_liveRecordingIndex = -1;
 };

@@ -7,6 +7,9 @@
 #include <QSettings>
 #include <QDateTime>
 
+#if defined(Q_OS_ANDROID)
+#include "platform/NovaAndroidStubs.h"
+#else
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -24,6 +27,7 @@
 #pragma pop_macro("slots")
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
+#endif
 
 NovaProjectManager::NovaProjectManager(QObject *parent)
     : QObject(parent)
