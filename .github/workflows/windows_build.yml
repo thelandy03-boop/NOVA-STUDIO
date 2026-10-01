@@ -63,7 +63,7 @@ jobs:
           $issContent = @"
           [Setup]
           AppName=NOVA Studio
-          AppVersion=1.0.0
+          AppVersion=10.0.0
           DefaultDirName={autopf}\NovaStudio
           DefaultGroupName=NOVA Studio
           OutputDir=.
@@ -92,12 +92,13 @@ jobs:
       - name: 🚀 Publicar Oficialmente en GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          name: "NOVA Studio v1.0.0 Official Release"
-          tag_name: "v1.0.0"
+          name: "NOVA Studio v10.0.0 Official Release"
+          tag_name: "v10.0.0"
+          make_latest: true
           body: |
-            🎉 **NOVA Studio v1.0.0 Alpha Multiplataforma**
+            🎉 **NOVA Studio v10.0.0 Alpha Multiplataforma**
             
-            ### 📥 Archivos Disponibles para Descarga:
+            ### 📥 Archivos Disponibles para Descarga Directa:
             * 🪟 **Windows (x64):** `NovaStudio-Setup-x64.exe` (Instalador automático)
             * 📱 **Android (ARM64):** `NovaStudio-arm64-v8a.apk` (App móvil)
           draft: false
