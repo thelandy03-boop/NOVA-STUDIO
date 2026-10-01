@@ -31,7 +31,11 @@ pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
 pkg_check_modules(GIOMM REQUIRED IMPORTED_TARGET giomm-2.4)
 pkg_check_modules(LIBXML REQUIRED IMPORTED_TARGET libxml-2.0)
 pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
-pkg_check_modules(ALSA REQUIRED IMPORTED_TARGET alsa)
+
+# ALSA solo se requiere en distribuciones de escritorio Linux
+if(NOT ANDROID)
+    pkg_check_modules(ALSA REQUIRED IMPORTED_TARGET alsa)
+endif()
 
 qt_standard_project_setup()
 qt_policy(SET QTP0001 NEW)
@@ -68,6 +72,11 @@ qt_add_executable(nova_ui_qt
     src/views/NovaWaveformItem.h
     src/views/NovaWaveformItem.cpp
 )
+
+# Configuración de paquete para Android APK
+if(ANDROID)
+    set_property(TARGET nova_ui_qt PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
+endif()
 
 nova_mark_singletons()
 nova_collect_qml(NOVA_QML_FILES)
@@ -129,7 +138,7 @@ elseif(EXISTS "${ARDOUR_BUILD_DIR}/libs/fst/libfst.so")
     list(APPEND EXTRA_ARDOUR_LIBS "${ARDOUR_BUILD_DIR}/libs/fst/libfst.so")
 endif()
 
-target_link_libraries(nova_ui_qt PRIVATE
+set(BASE_LINK_LIBS
     Qt6::Quick
     Qt6::Qml
     Qt6::Core
@@ -140,7 +149,6 @@ target_link_libraries(nova_ui_qt PRIVATE
     PkgConfig::GIOMM
     PkgConfig::LIBXML
     PkgConfig::SNDFILE
-    PkgConfig::ALSA
     ${ARDOUR_BUILD_DIR}/libs/ardour/libardour.so
     ${ARDOUR_BUILD_DIR}/libs/pbd/libpbd.so
     ${ARDOUR_BUILD_DIR}/libs/temporal/libtemporal.so
@@ -148,3 +156,9 @@ target_link_libraries(nova_ui_qt PRIVATE
     ${ARDOUR_BUILD_DIR}/libs/midi++2/libmidipp.so
     ${EXTRA_ARDOUR_LIBS}
 )
+
+if(NOT ANDROID)
+    list(APPEND BASE_LINK_LIBS PkgConfig::ALSA)
+endif()
+
+target_link_libraries(nova_ui_qt PRIVATE ${BASE_LINK_LIBS})
