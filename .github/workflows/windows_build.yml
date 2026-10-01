@@ -1,4 +1,4 @@
-name: 🪟 Windows Build & GitHub Release (NOVA Studio)
+name: 🪟 Windows Build & Auto-Updater Release (NOVA Studio)
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: ⚡ Compilar Windows .EXE y Publicar Release
+    name: ⚡ Compilar Windows .EXE y Publicar v9.8.35
     runs-on: windows-latest
 
     steps:
@@ -19,7 +19,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: 🛠️ Instalar Inno Setup en la máquina virtual
+      - name: 🛠️ Instalar Inno Setup
         run: choco install innosetup -y
 
       - name: ⚙️ Configurar Entorno de Compilación (Ninja & MSVC)
@@ -63,11 +63,11 @@ jobs:
           $issContent = @"
           [Setup]
           AppName=NOVA Studio
-          AppVersion=10.0.0
+          AppVersion=9.8.35
           DefaultDirName={autopf}\NovaStudio
           DefaultGroupName=NOVA Studio
           OutputDir=.
-          OutputBaseFilename=NovaStudio-Setup-x64
+          OutputBaseFilename=NovaStudio-Setup-v9.8.35-x64
           Compression=lzma2/ultra64
           SolidCompression=yes
           ArchitecturesInstallIn64BitMode=x64
@@ -86,25 +86,26 @@ jobs:
           Set-Content -Path "installer.iss" -Value $issContent
 
       - name: 🏗️ Compilar Instalador .EXE con Inno Setup
+        shell: pwsh
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
-      - name: 🚀 Publicar Oficialmente en GitHub Releases
+      - name: 🚀 Publicar Oficialmente en GitHub Releases (v9.8.35)
         uses: softprops/action-gh-release@v2
         with:
-          name: "NOVA Studio v10.0.0 Official Release"
-          tag_name: "v10.0.0"
+          name: "NOVA-STUDIO v9.8.35"
+          tag_name: "v9.8.35"
           make_latest: true
           body: |
-            🎉 **NOVA Studio v10.0.0 Alpha Multiplataforma**
+            🎉 **NOVA-STUDIO v9.8.35 Actualización Oficial**
             
-            ### 📥 Archivos Disponibles para Descarga Directa:
-            * 🪟 **Windows (x64):** `NovaStudio-Setup-x64.exe` (Instalador automático)
+            ### 📥 Archivos para Descarga y Auto-Update:
+            * 🪟 **Windows (x64):** `NovaStudio-Setup-v9.8.35-x64.exe` (Instalador ejecutable)
             * 📱 **Android (ARM64):** `NovaStudio-arm64-v8a.apk` (App móvil)
           draft: false
           prerelease: false
           files: |
-            NovaStudio-Setup-x64.exe
+            NovaStudio-Setup-v9.8.35-x64.exe
             nova_ui_qt/android/apks/NovaStudio-arm64-v8a.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
