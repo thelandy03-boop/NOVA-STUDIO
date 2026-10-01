@@ -1,65 +1,84 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtCore
 
-Rectangle {
+Item {
     id: hubRoot
-    anchors.fill: parent
-    color: "#0F0F11"
+    width: parent ? parent.width : 1280
+    height: parent ? parent.height : 800
 
     signal projectOpened()
 
-    // 📂 Selector de carpetas para nuevo proyecto
-    FolderDialog {
-        id: folderDialog
-        title: "Seleccionar carpeta para el proyecto"
-        currentFolder: "file://" + StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
-        onAccepted: {
-            var path = folderDialog.selectedFolder.toString()
-            if (path.startsWith("file://")) {
-                path = path.substring(7) // Quitar prefijo file://
-            }
-            newProjectPathInput.text = path
+    property bool isBusy: false
+
+    function safeOpenProject(filePath) {
+        if (hubRoot.isBusy) return
+        hubRoot.isBusy = true
+
+        var cleanPath = filePath.toString()
+        if (cleanPath.startsWith("file://")) {
+            cleanPath = cleanPath.substring(7)
         }
+
+        console.log("📂 [GUI] Abriendo proyecto independiente:", cleanPath)
+        if (AudioEngine.openProject(cleanPath)) {
+            hubRoot.projectOpened()
+        }
+
+        Qt.callLater(function() { hubRoot.isBusy = false })
     }
 
-    // 📂 Selector de archivos para abrir proyecto existente (.ardour)
+    function createInstantProject() {
+        if (hubRoot.isBusy) return
+        hubRoot.isBusy = true
+
+        var projectsDir = StandardPaths.writableLocation(StandardPaths.DocumentsLocation) + "/NovaProjects"
+        var count = AudioEngine.recentProjects ? AudioEngine.recentProjects.length + 1 : 1
+        var projectName = "Proyecto " + count
+
+        console.log("⚡ [GUI] Creando carpeta de proyecto independiente:", projectName)
+        if (AudioEngine.newProject(projectName, projectsDir)) {
+            hubRoot.projectOpened()
+        }
+
+        Qt.callLater(function() { hubRoot.isBusy = false })
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: "#0F0F11"
+    }
+
     FileDialog {
         id: fileDialog
         title: "Abrir sesión de NOVA STUDIO"
         nameFilters: ["Sesiones de Ardour (*.ardour)"]
-        currentFolder: "file://" + StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        currentFolder: "file://" + StandardPaths.writableLocation(StandardPaths.DocumentsLocation) + "/NovaProjects"
         onAccepted: {
-            var selectedFile = fileDialog.selectedFile.toString()
-            if (selectedFile.startsWith("file://")) {
-                selectedFile = selectedFile.substring(7)
-            }
-            if (AudioEngine.openProject(selectedFile)) {
-                hubRoot.projectOpened()
-            }
+            hubRoot.safeOpenProject(fileDialog.selectedFile)
         }
     }
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 40
-        spacing: 40
+        anchors.margins: 50
+        spacing: 50
 
-        // ── PANEL IZQUIERDO: CONTROLES DE CREACIÓN Y APERTURA ──
+        // ── PANEL IZQUIERDO: ACCIONES RÁPIDAS ──
         ColumnLayout {
             Layout.preferredWidth: 320
             Layout.fillHeight: true
-            spacing: 24
+            spacing: 32
 
-            // Título / Logo
             ColumnLayout {
-                spacing: 4
+                spacing: 6
                 Text {
                     text: "NOVA STUDIO"
                     color: "#FFFFFF"
-                    font.pixelSize: 28
+                    font.pixelSize: 32
                     font.bold: true
-                    font.letterSpacing: 1.5
+                    font.letterSpacing: 2
                 }
                 Text {
                     text: "Motor Híbrido C++ & Ardour Core"
@@ -68,141 +87,55 @@ Rectangle {
                 }
             }
 
-            // SECCIÓN: NUEVO PROYECTO
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 180
-                color: "#16171A"
-                border.color: "#2C2D31"
-                radius: 6
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
-
-                    Text {
-                        text: "Nuevo Proyecto"
-                        color: "#E0E0E0"
-                        font.pixelSize: 12
-                        font.bold: true
-                    }
-
-                    // Input Nombre del Proyecto
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text { text: "Nombre:"; color: "#8E8E93"; font.pixelSize: 9 }
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 24
-                            color: "#1F2024"
-                            border.color: nameInput.activeFocus ? "#FFCC00" : "#3E3E42"
-                            radius: 3
-                            TextInput {
-                                id: nameInput
-                                anchors.fill: parent
-                                anchors.leftMargin: 8; anchors.rightMargin: 8
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "Mi Canción"
-                                color: "#FFFFFF"
-                                font.pixelSize: 11
-                                selectByMouse: true
-                            }
-                        }
-                    }
-
-                    // Input Ruta del Proyecto
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text { text: "Ruta del Proyecto:"; color: "#8E8E93"; font.pixelSize: 9 }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 24
-                                color: "#1F2024"
-                                border.color: "#3E3E42"
-                                radius: 3
-                                Text {
-                                    id: newProjectPathInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 8; anchors.rightMargin: 8
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: StandardPaths.writableLocation(StandardPaths.DocumentsLocation) + "/NovaProjects"
-                                    color: "#A0A0A5"
-                                    font.pixelSize: 10
-                                    elide: Text.ElideLeft
-                                }
-                            }
-                            // Botón Examinar
-                            Rectangle {
-                                width: 28; height: 24
-                                radius: 3
-                                color: browseMouse.containsMouse ? "#3E3E42" : "#2C2D31"
-                                border.color: "#3E3E42"
-                                Text { anchors.centerIn: parent; text: "•••"; color: "#FFFFFF"; font.pixelSize: 10 }
-                                MouseArea {
-                                    id: browseMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: folderDialog.open()
-                                }
-                            }
-                        }
-                    }
-
-                    // Botón Crear Proyecto (FL Yellow Style)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 28
-                        radius: 3
-                        color: createMouse.containsMouse ? "#D9B000" : "#FFCC00"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Crear Proyecto Vacío"
-                            color: "#000000"
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-
-                        MouseArea {
-                            id: createMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (AudioEngine.newProject(nameInput.text, newProjectPathInput.text)) {
-                                    hubRoot.projectOpened()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // SECCIÓN: BOTONES GLOBALES
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 14
 
-                // Botón Abrir desde Disco
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 32
-                    color: openDiskMouse.containsMouse ? "#2C2D31" : "#16171A"
-                    border.color: "#2C2D31"
-                    radius: 4
+                    height: 48
+                    radius: 6
+                    color: createMouse.containsMouse ? "#D9B000" : "#FFCC00"
 
-                    Row {
+                    RowLayout {
                         anchors.centerIn: parent
-                        spacing: 8
-                        Text { text: "📂"; font.pixelSize: 12 }
-                        Text { text: "Abrir Proyecto desde Disco..."; color: "#E0E0E0"; font.pixelSize: 11; font.bold: true }
+                        spacing: 10
+                        Text { text: "⚡"; font.pixelSize: 16 }
+                        Text {
+                            text: "Crear Nuevo Proyecto"
+                            color: "#000000"
+                            font.pixelSize: 13
+                            font.bold: true
+                        }
+                    }
+
+                    MouseArea {
+                        id: createMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: hubRoot.createInstantProject()
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 42
+                    color: openDiskMouse.containsMouse ? "#2C2D31" : "#16171A"
+                    border.color: openDiskMouse.containsMouse ? "#4E4F56" : "#2C2D31"
+                    border.width: 1
+                    radius: 6
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 10
+                        Text { text: "📂"; font.pixelSize: 14 }
+                        Text {
+                            text: "Abrir Proyecto desde Disco..."
+                            color: "#E0E0E0"
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
                     }
 
                     MouseArea {
@@ -215,96 +148,122 @@ Rectangle {
                 }
             }
 
-            Item { Layout.fillHeight: true } // Espaciador inferior
+            Item { Layout.fillHeight: true }
         }
 
-        // ── PANEL DERECHO: PROYECTOS RECIENTES ──
+        // ── PANEL DERECHO: PROYECTOS RECIENTES CON BOTÓN DE ELIMINAR ──
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 12
+            spacing: 14
 
             Text {
                 text: "Proyectos Recientes"
-                color: "#E0E0E0"
-                font.pixelSize: 14
+                color: "#FFFFFF"
+                font.pixelSize: 15
                 font.bold: true
             }
 
-            // Listado Dinámico
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 color: "#16171A"
                 border.color: "#2C2D31"
-                radius: 6
+                radius: 8
 
                 ListView {
                     id: recentListView
                     anchors.fill: parent
-                    anchors.margins: 8
+                    anchors.margins: 10
                     model: AudioEngine.recentProjects
                     clip: true
-                    spacing: 4
+                    spacing: 6
 
                     delegate: Rectangle {
                         width: recentListView.width
-                        height: 52
-                        radius: 4
-                        color: itemMouse.containsMouse ? "#2C2D31" : "transparent"
-                        border.color: itemMouse.containsMouse ? "#3E3E42" : "transparent"
+                        height: 54
+                        radius: 5
+                        color: itemMouse.containsMouse ? "#2C2D31" : "#1C1D21"
+                        border.color: itemMouse.containsMouse ? "#FFCC00" : "#28292E"
                         border.width: 1
 
-                        ColumnLayout {
+                        RowLayout {
                             anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 2
+                            anchors.margins: 10
+                            spacing: 8
 
-                            RowLayout {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                Text {
-                                    text: modelData.name || "Proyecto sin Nombre"
-                                    color: itemMouse.containsMouse ? "#FFCC00" : "#FFFFFF"
-                                    font.pixelSize: 11
-                                    font.bold: true
+                                spacing: 3
+
+                                RowLayout {
                                     Layout.fillWidth: true
+                                    Text {
+                                        text: modelData.name || "Proyecto sin Nombre"
+                                        color: itemMouse.containsMouse ? "#FFCC00" : "#FFFFFF"
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                    }
+                                    Text {
+                                        text: modelData.lastModified || ""
+                                        color: "#6D7278"
+                                        font.pixelSize: 9
+                                    }
                                 }
+
                                 Text {
-                                    text: modelData.lastModified || ""
-                                    color: "#6D7278"
+                                    text: modelData.path || ""
+                                    color: "#8E8E93"
                                     font.pixelSize: 9
+                                    elide: Text.ElideLeft
+                                    Layout.fillWidth: true
                                 }
                             }
 
-                            Text {
-                                text: modelData.path || ""
-                                color: "#8E8E93"
-                                font.pixelSize: 9
-                                elide: Text.ElideLeft
-                                Layout.fillWidth: true
+                            // 🗑️ BOTÓN DE ELIMINAR DE RECIENTES
+                            Rectangle {
+                                width: 24; height: 24; radius: 12
+                                color: deleteRecentMouse.containsMouse ? "#40FF3B30" : "transparent"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "✕"
+                                    color: deleteRecentMouse.containsMouse ? "#FF3B30" : "#6D7278"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
+
+                                MouseArea {
+                                    id: deleteRecentMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        AudioEngine.removeRecentProject(modelData.path)
+                                    }
+                                }
                             }
                         }
 
                         MouseArea {
                             id: itemMouse
                             anchors.fill: parent
+                            anchors.rightMargin: 36 // No tapar el botón de borrar
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onDoubleClicked: {
+                            onClicked: {
                                 var ardourFile = modelData.path + "/" + modelData.name + ".ardour"
-                                if (AudioEngine.openProject(ardourFile)) {
-                                    hubRoot.projectOpened()
-                                }
+                                hubRoot.safeOpenProject(ardourFile)
                             }
                         }
                     }
 
-                    // Mensaje alternativo si no hay proyectos recientes
                     Text {
                         anchors.centerIn: parent
                         text: "No tienes proyectos recientes todavía."
                         color: "#6D7278"
-                        font.pixelSize: 11
+                        font.pixelSize: 12
                         visible: recentListView.count === 0
                     }
                 }

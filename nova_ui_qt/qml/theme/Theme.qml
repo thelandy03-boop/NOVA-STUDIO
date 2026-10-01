@@ -1,11 +1,12 @@
 ﻿pragma Singleton
 import QtQuick
+import QtCore
 
 QtObject {
     id: root
 
     // ──────────────────────────────────────────────
-    // 1. HOME — Neo-minimal Amped (Tus tokens originales)
+    // 1. HOME — Neo-minimal Amped
     // ──────────────────────────────────────────────
     readonly property color novaIndigo:      "#6366F1"
     readonly property color novaPurple:      "#A855F7"
@@ -18,7 +19,7 @@ QtObject {
     readonly property color textLight:       "#F8FAFC"
 
     // ──────────────────────────────────────────────
-    // 2. WORKSPACE / REAPER (Tus tokens originales)
+    // 2. WORKSPACE / REAPER / LOGIC
     // ──────────────────────────────────────────────
     readonly property color bgDarker:        "#121212"
     readonly property color bgDark:          "#1E1E1E"
@@ -43,7 +44,6 @@ QtObject {
     // ──────────────────────────────────────────────
     // 3. REC BUTTONS — Paleta exacta REAPER
     // ──────────────────────────────────────────────
-    // Track REC (Domo HEX)
     readonly property color recTrackIdleFill:      "#633942"
     readonly property color recTrackIdleOuter:     "#B65D62"
     readonly property color recTrackIdleInnerRing: "#AC8B90"
@@ -51,7 +51,6 @@ QtObject {
     readonly property color recTrackArmedOuter:    "#FF6B8B"
     readonly property color recTrackArmedInner:    "#FFFFFF"
 
-    // Transport REC (Shell + LED)
     readonly property color recTransportShell:     "#3A3A3A"
     readonly property color recTransportShellHi:   "#5A5A5A"
     readonly property color recTransportShellPress:"#262626"
@@ -98,7 +97,15 @@ QtObject {
     readonly property int transportHeight: 44
 
     // ──────────────────────────────────────────────
-    // 8. CONTROL DE SKIN DINÁMICO
+    // 8. CONTROL DE SKIN DINÁMICO PERSISTENTE (Predeterminado: "logic")
     // ──────────────────────────────────────────────
-    property string activeSkin: "draft"
+    property string activeSkin: settings.value("activeSkin", "logic")
+
+    onActiveSkinChanged: {
+        settings.setValue("activeSkin", activeSkin)
+    }
+
+    readonly property Settings settings: Settings {
+        category: "NovaTheme"
+    }
 }

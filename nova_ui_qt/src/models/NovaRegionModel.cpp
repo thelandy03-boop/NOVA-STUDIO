@@ -38,7 +38,6 @@
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
 
-// 🎛️ SOFT CLIPPER ANALÓGICO TRANSPARENTE (CERO ALLOCATIONS EN THREAD RT)
 inline float applySoftClip(float x) noexcept
 {
     constexpr float threshold = 0.8f;
@@ -52,7 +51,6 @@ inline float applySoftClip(float x) noexcept
     return x;
 }
 
-// Auxiliares de conversión de volumen
 static inline float coeffToDb(float coeff) {
     if (coeff <= 0.000001f) return -192.0f;
     return 20.0f * std::log10(coeff);
@@ -63,7 +61,6 @@ static inline float dbToCoeff(float dB) {
     return std::pow(10.0f, dB / 20.0f);
 }
 
-// 🚀 CONSTRUCTOR DE PICOS ULTRA-DEFINIDO (4,000 PUNTOS DE RESOLUCIÓN HD + RMS + SOFT CLIP)
 static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::AudioRegion> &region,
                                                size_t pointCount = 4000)
 {
@@ -71,7 +68,10 @@ static std::vector<PeakPoint> buildRegionPeaks(const std::shared_ptr<ARDOUR::Aud
     if (!region || pointCount == 0 || region->n_channels() == 0) return result;
 
     const auto length = region->length_samples();
-    if (length <= 0) return result;
+    if (length <= 0 || length > 100000000000LL) return result;
+
+    qCDebug(novaModel) << "🔊 [DSP] Calculando peaks HD para la región:" << QString::fromStdString(region->name()) 
+                       << "Duración:" << length << "muestras.";
 
     for (uint32_t channel = 0; channel < region->n_channels(); ++channel) {
         auto source = region->audio_source(channel);
@@ -191,6 +191,7 @@ void NovaRegionModel::setSession(ARDOUR::Session *session)
     endResetModel();
 
     if (m_session) {
+        qCDebug(novaModel) << "🟢 Sincronizando NovaRegionModel con nueva sesión de Ardour...";
         rebuildRegionCache();
     }
 
@@ -328,14 +329,11 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
 
             m_session->import_files(status);
 
-            if (status.sources.empty() || status.cancel) {
-                qCWarning(novaModel) << "No se pudieron generar fuentes para:" << cleanPath;
-                return;
-            }
+            if (status.sources.empty() || status.cancel) return;
 
             const ARDOUR::SourceList importedSources = status.sources;
             QMetaObject::invokeMethod(this, [this, targetTrack, importedSources, fileInfo, startBeat]() {
-                if (!m_session || importedSources.empty()) return;
+                if (!m_session || importedSources.empty() || !importedSources.front()) return;
 
                 PBD::PropertyList plist;
                 plist.add(ARDOUR::Properties::start, Temporal::timepos_t(0));
@@ -346,28 +344,22 @@ bool NovaRegionModel::importAudioFile(int trackIndex, const QString &filePath, d
                 plist.add(ARDOUR::Properties::opaque, true);
 
                 auto region = ARDOUR::RegionFactory::create(importedSources, plist);
-                if (!region) {
-                    qCWarning(novaModel) << "Ardour no pudo crear la región para:" << fileInfo.fileName();
-                    return;
-                }
+                if (!region) return;
 
                 auto playlist = targetTrack->playlist();
-                if (!playlist) {
-                    qCWarning(novaModel) << "La pista no tiene playlist para insertar:" << fileInfo.fileName();
-                    return;
-                }
+                if (!playlist) return;
 
                 const double sampleRate = m_session->sample_rate() > 0
                     ? static_cast<double>(m_session->sample_rate()) : 48000.0;
                 const auto startSample = static_cast<ARDOUR::samplepos_t>(
                     NovaTimeUtils::beatToFrame(startBeat, sampleRate, 120.0));
+                
                 playlist->add_region(region, Temporal::timepos_t(startSample));
+                m_session->set_dirty();
+
                 rebuildRegionCache();
-                qCDebug(novaModel) << "Audio insertado en el timeline:" << fileInfo.fileName();
             }, Qt::QueuedConnection);
-        } catch (const std::exception &e) {
-            qCWarning(novaModel) << "Excepción al importar audio:" << e.what();
-        }
+        } catch (...) {}
     });
 
     return true;
@@ -381,8 +373,9 @@ bool NovaRegionModel::moveRegion(int regionIndex, double newStartBeat)
     double sampleRate = (m_session && m_session->sample_rate() > 0) ? static_cast<double>(m_session->sample_rate()) : 48000.0;
     ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(newStartBeat, sampleRate, 120.0));
 
-    if (item.regionPtr) {
+    if (item.regionPtr && m_session) {
         item.regionPtr->set_position(Temporal::timepos_t(startSample));
+        m_session->set_dirty();
     }
 
     item.startBeat = newStartBeat;
@@ -402,9 +395,10 @@ bool NovaRegionModel::resizeRegion(int regionIndex, double newStartBeat, double 
     ARDOUR::samplepos_t startSample = static_cast<ARDOUR::samplepos_t>(NovaTimeUtils::beatToFrame(newStartBeat, sampleRate, 120.0));
     ARDOUR::samplecnt_t lengthSamples = static_cast<ARDOUR::samplecnt_t>(NovaTimeUtils::beatToFrame(newLengthBeats, sampleRate, 120.0));
 
-    if (item.regionPtr) {
+    if (item.regionPtr && m_session) {
         item.regionPtr->set_position(Temporal::timepos_t(startSample));
         item.regionPtr->set_length(Temporal::timecnt_t(lengthSamples));
+        m_session->set_dirty();
     }
 
     item.startBeat = newStartBeat;
@@ -432,6 +426,7 @@ void NovaRegionModel::removeRegion(int regionIndex)
                         auto track = std::dynamic_pointer_cast<ARDOUR::Track>(route);
                         if (track && track->playlist() && item.regionPtr) {
                             track->playlist()->remove_region(item.regionPtr);
+                            m_session->set_dirty();
                         }
                         break;
                     }
@@ -451,26 +446,23 @@ void NovaRegionModel::removeRegion(int regionIndex)
         m_liveRecordingIndex--;
     }
 
-    qCDebug(novaModel) << "Region eliminada del modelo. Índice:" << regionIndex;
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }
 
-// 🔊 CONTROL DE VOLUMEN (CLIP GAIN) DIGITAL NATIVO
 void NovaRegionModel::setClipGainDb(int regionIndex, float dB)
 {
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
     auto &item = m_regions[static_cast<size_t>(regionIndex)];
     
     auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(item.regionPtr);
-    if (audioRegion) {
+    if (audioRegion && m_session) {
         audioRegion->set_scale_amplitude(dbToCoeff(dB));
+        m_session->set_dirty();
         item.clipGainDb = dB;
         Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {ClipGainDbRole});
-        qCDebug(novaModel) << "🔊 [Clip Gain] Ajustado volumen de" << item.name << "a" << dB << "dB";
     }
 }
 
-// ⚡ CONTROL DE FUNDIDO DE ENTRADA (FADE IN)
 void NovaRegionModel::setFadeInBeats(int regionIndex, double beats)
 {
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
@@ -483,13 +475,13 @@ void NovaRegionModel::setFadeInBeats(int regionIndex, double beats)
 
         audioRegion->set_fade_in_active(beats > 0.001);
         audioRegion->set_fade_in_length(fadeSamples);
+        m_session->set_dirty();
         item.fadeInBeats = beats;
 
         Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {FadeInBeatsRole});
     }
 }
 
-// ⚡ CONTROL DE FUNDIDO DE SALIDA (FADE OUT)
 void NovaRegionModel::setFadeOutBeats(int regionIndex, double beats)
 {
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
@@ -502,13 +494,13 @@ void NovaRegionModel::setFadeOutBeats(int regionIndex, double beats)
 
         audioRegion->set_fade_out_active(beats > 0.001);
         audioRegion->set_fade_out_length(fadeSamples);
+        m_session->set_dirty();
         item.fadeOutBeats = beats;
 
         Q_EMIT dataChanged(index(regionIndex), index(regionIndex), {FadeOutBeatsRole});
     }
 }
 
-// ⚡ AUTO-NORMALIZACIÓN DE RETORNO CERRADO (1-Toque Estilo Mobile)
 void NovaRegionModel::normalizeClip(int regionIndex)
 {
     if (regionIndex < 0 || regionIndex >= static_cast<int>(m_regions.size())) return;
@@ -521,18 +513,14 @@ void NovaRegionModel::normalizeClip(int regionIndex)
             maxPeak = std::max({maxPeak, std::abs(p.min), std::abs(p.max)});
         }
 
-        constexpr float targetHeadroom = 0.89125f; // -1.0 dBFS (Nivel comercial de estudio)
+        constexpr float targetHeadroom = 0.89125f; // -1.0 dBFS
         
         if (maxPeak > 0.001f) {
             float requiredGainCoeff = targetHeadroom / maxPeak;
             float targetGainDb = coeffToDb(requiredGainCoeff);
             
-            // Forzar límite seguro entre -24dB y +24dB
             targetGainDb = std::clamp(targetGainDb, -24.0f, 24.0f);
-            
             setClipGainDb(regionIndex, targetGainDb);
-            qCDebug(novaModel) << "⚡ [Auto-Gain] Normalizado clip" << item.name 
-                               << "a" << targetGainDb << "dB. Pico anterior:" << maxPeak;
         }
     }
 }
@@ -579,7 +567,6 @@ void NovaRegionModel::createLiveRecordingClip(double startBeat)
     m_liveRecordingIndex = row;
     endInsertRows();
 
-    qCDebug(novaModel) << "Clip de grabación en vivo instanciado en beat:" << startBeat;
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }
 
@@ -590,7 +577,6 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
     auto &item = m_regions[static_cast<size_t>(m_liveRecordingIndex)];
     item.lengthBeats = lengthBeats;
 
-    // 🚀 LECTURA EN TIEMPO REAL DE MUESTRAS PCM CON AUTO-GAIN & SOFT CLIP
     if (m_session) {
         auto routeList = m_session->get_routes();
         if (routeList) {
@@ -613,7 +599,6 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
                                     const ARDOUR::samplecnt_t baseSamples = length / static_cast<ARDOUR::samplecnt_t>(pointCount);
                                     
                                     if (baseSamples > 0) {
-                                        // 🎙️ AUTO-GAIN TRIM PREVENTIVO (BandLab Style)
                                         float maxRawPeak = 0.0001f;
                                         for (size_t i = 0; i < pointCount; ++i) {
                                             const auto first = static_cast<ARDOUR::samplecnt_t>(i) * baseSamples;
@@ -625,8 +610,8 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
                                         }
 
                                         float autoGainScale = 1.0f;
-                                        constexpr float safeThreshold = 0.891f; // -1 dBFS
-                                        constexpr float targetHeadroom = 0.5f;  // -6 dBFS
+                                        constexpr float safeThreshold = 0.891f;
+                                        constexpr float targetHeadroom = 0.5f;
 
                                         if (maxRawPeak > safeThreshold) {
                                             autoGainScale = targetHeadroom / maxRawPeak;
@@ -670,18 +655,20 @@ void NovaRegionModel::updateLiveRecordingClip(double lengthBeats)
 
 void NovaRegionModel::finalizeLiveRecordingClip()
 {
-    qCDebug(novaModel) << "Finalizando clip de grabación en vivo y programando sincronización de sesión...";
-
     QTimer::singleShot(250, this, [this]() {
         m_liveRecordingIndex = -1;
+        if (m_session) m_session->set_dirty();
         rebuildRegionCache();
-        qCDebug(novaModel) << "Sincronización diferida completada. Regiones en UI:" << m_regions.size();
     });
 }
 
+// 🚀 RECONSTRUCCIÓN TOTAL Y LECTURA DE REGIONES PERSISTIDAS EN ARDOUR
 void NovaRegionModel::rebuildRegionCache()
 {
     if (!m_session) return;
+
+    qCDebug(novaModel) << "🔍 [REBUILD] Reconstruyendo caché de regiones de la sesión en:" 
+                       << QString::fromStdString(m_session->path());
 
     std::vector<NovaRegionItem> localPreservedClips;
     for (const auto &item : m_regions) {
@@ -705,8 +692,13 @@ void NovaRegionModel::rebuildRegionCache()
 
             auto track = std::dynamic_pointer_cast<ARDOUR::Track>(route);
             if (track && track->playlist()) {
+                
                 auto regList = track->playlist()->region_list();
                 if (regList) {
+                    qCDebug(novaModel) << "📂 [REBUILD] Track " << trackIdx << ":" 
+                                       << QString::fromStdString(track->name()) 
+                                       << "tiene" << regList->size() << "regiones.";
+
                     for (auto &reg : *regList) {
                         if (!reg) continue;
 
@@ -724,7 +716,6 @@ void NovaRegionModel::rebuildRegionCache()
                         item.color = QStringLiteral("#4A90E2");
                         item.isLiveRecording = false;
 
-                        // Cargar valores de fundidos y ganancia digital nativa de Ardour
                         auto audioRegion = std::dynamic_pointer_cast<ARDOUR::AudioRegion>(reg);
                         if (audioRegion) {
                             item.clipGainDb = coeffToDb(audioRegion->scale_amplitude());
@@ -753,9 +744,12 @@ void NovaRegionModel::rebuildRegionCache()
                             QString peakFile = sessionPeaksDir + "/" + item.id + ".novapeak";
                             if (!loadPeakFile(peakFile, cachedPeaks)) {
                                 if (audioRegion) {
+                                    qCDebug(novaModel) << "⚡ [Peaks] Archivo de pico no encontrado. Generando peaks HD para:" << item.id;
                                     cachedPeaks = buildRegionPeaks(audioRegion);
                                     savePeakFile(peakFile, cachedPeaks);
                                 }
+                            } else {
+                                qCDebug(novaModel) << "🎯 [Peaks] Peaks cargados exitosamente de disco para:" << item.id;
                             }
                             if (!cachedPeaks.empty()) NovaWaveformCache::setPeaks(item.id, cachedPeaks);
                         }
@@ -773,6 +767,6 @@ void NovaRegionModel::rebuildRegionCache()
     }
 
     endResetModel();
-    qCDebug(novaModel) << "Caché de regiones reconstruido. Total regiones:" << m_regions.size();
+    qCDebug(novaModel) << "📊 [REBUILD] Caché de regiones reconstruido con éxito. Total regiones visibles:" << m_regions.size();
     Q_EMIT regionCountChanged(static_cast<int>(m_regions.size()));
 }

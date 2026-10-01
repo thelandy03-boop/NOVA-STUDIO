@@ -47,6 +47,8 @@ qt_add_executable(nova_ui_qt
     src/core/NovaLogging.cpp
     src/core/NovaSessionManager.h
     src/core/NovaSessionManager.cpp
+    src/core/NovaProjectManager.h
+    src/core/NovaProjectManager.cpp
     src/core/NovaTransportController.h
     src/core/NovaTransportController.cpp
     src/core/NovaRecordManager.h

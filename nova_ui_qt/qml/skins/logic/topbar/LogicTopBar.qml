@@ -46,19 +46,13 @@ Rectangle {
         LogicLcdDisplayBlock { Layout.alignment: Qt.AlignVCenter }
     }
 
-    // ── 3. GRUPO DERECHO (Master Peak Meter FL Studio + Master Controls) ──
+    // ── 3. GRUPO DERECHO (Espacio limpio) ──
     RowLayout {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 12
+        anchors.rightMargin: 16
         spacing: 10
-
-        LogicMasterPeakMeter {
-            Layout.alignment: Qt.AlignVCenter
-        }
-
-        LogicMasterControlBlock { Layout.fillHeight: true }
     }
 
     // Borde inferior sutil

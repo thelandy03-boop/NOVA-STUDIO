@@ -4,7 +4,6 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
-
 #include "core/NovaSessionManager.h"
 #include "core/NovaTransportController.h"
 #include "core/NovaRecordManager.h"
@@ -17,6 +16,7 @@ class NovaAudioEngine : public QObject
 {
     Q_OBJECT
 
+    // ── PROPIEDADES EXPUESTAS A QML ──
     Q_PROPERTY(bool isPlaying READ isPlaying NOTIFY isPlayingChanged)
     Q_PROPERTY(bool isRecording READ isRecording NOTIFY isRecordingChanged)
     Q_PROPERTY(QString timecode READ timecode NOTIFY timecodeChanged)
@@ -33,7 +33,7 @@ class NovaAudioEngine : public QObject
     Q_PROPERTY(double loopStartBeat READ loopStartBeat NOTIFY loopRangeChanged)
     Q_PROPERTY(double loopEndBeat READ loopEndBeat NOTIFY loopRangeChanged)
 
-    // 🎛️ MEDIDOR MASTER ESTÉREO FL STUDIO
+    // VU METER MASTER GLOBAL (FL STUDIO STYLE)
     Q_PROPERTY(float masterPeakLeft READ masterPeakLeft NOTIFY masterPeaksChanged)
     Q_PROPERTY(float masterPeakRight READ masterPeakRight NOTIFY masterPeaksChanged)
     Q_PROPERTY(float masterVolumeDb READ masterVolumeDb WRITE setMasterVolumeDb NOTIFY masterVolumeDbChanged)
@@ -42,38 +42,41 @@ class NovaAudioEngine : public QObject
     Q_PROPERTY(bool isDirty READ isDirty NOTIFY isDirtyChanged)
     Q_PROPERTY(QVariantList recentProjects READ recentProjects NOTIFY recentProjectsChanged)
     Q_PROPERTY(QString currentProjectName READ currentProjectName NOTIFY currentProjectChanged)
-    Q_PROPERTY(QString currentProjectPath READ currentProjectName NOTIFY currentProjectChanged)
+    Q_PROPERTY(QString currentProjectPath READ currentProjectPath NOTIFY currentProjectChanged)
 
 public:
     explicit NovaAudioEngine(QObject *parent = nullptr);
     ~NovaAudioEngine() override;
 
-    bool initEngine();
+    Q_INVOKABLE bool initEngine();
 
+    // Controles de Transporte
+    Q_INVOKABLE void play();
+    Q_INVOKABLE void pause();
+    Q_INVOKABLE void stop();
+    Q_INVOKABLE void togglePlay();
+    Q_INVOKABLE void toggleRecord();
+    Q_INVOKABLE void locateFrame(double frame);
+    Q_INVOKABLE void locateBeat(double beat);
+    Q_INVOKABLE void setBpm(double bpm);
+
+    // Bucle (Loop)
+    Q_INVOKABLE void setLoopEnabled(bool enabled);
+    Q_INVOKABLE void setLoopRange(double startBeat, double endBeat);
+
+    // Helpers de Tiempo y Píxeles
     Q_INVOKABLE double beatToPixel(double beat, double barWidth = 80.0) const { return NovaTimeUtils::beatToPixel(beat, barWidth); }
     Q_INVOKABLE double pixelToBeat(double pixelX, double barWidth = 80.0) const { return NovaTimeUtils::pixelToBeat(pixelX, barWidth); }
 
-    // Control de Transporte básico
-    Q_INVOKABLE void play() { m_transport.play(); }
-    Q_INVOKABLE void stop() { m_transport.stop(); }
-    Q_INVOKABLE void rewind() { m_transport.rewind(); }
-    Q_INVOKABLE void togglePlay() { m_transport.togglePlay(); }
-    Q_INVOKABLE void toggleRecord() { m_recorder.toggleRecord(); }
-    Q_INVOKABLE void setBpm(double newBpm) { m_transport.setBpm(newBpm); }
-
-    Q_INVOKABLE void locateFrame(double frame) { m_transport.locateFrame(frame); }
-    Q_INVOKABLE void locateBeat(double beat) { m_transport.locateBeat(beat); }
-    Q_INVOKABLE void setLoopRange(double startBeat, double endBeat) { m_transport.setLoopRange(startBeat, endBeat); }
-    Q_INVOKABLE void setLoopEnabled(bool enabled) { m_transport.setLoopEnabled(enabled); }
-    Q_INVOKABLE void toggleLoop() { m_transport.toggleLoop(); }
-
-    // 💾 MÉTODOS DE PROYECTOS EXPUESTOS A QML
+    // Métodos CRUD de Proyectos
     Q_INVOKABLE bool saveProject();
     Q_INVOKABLE bool openProject(const QString &path);
     Q_INVOKABLE bool newProject(const QString &name, const QString &parentDir);
     Q_INVOKABLE void closeProject();
+    Q_INVOKABLE void discardProject(); // 🗑️ Descartar cambios y eliminar si nunca fue guardado
+    Q_INVOKABLE void removeRecentProject(const QString &path);
 
-    // Getters
+    // Getters de Estado
     bool isPlaying() const { return m_transport.isPlaying(); }
     bool isRecording() const { return m_recorder.isRecording(); }
     QString timecode() const { return m_transport.timecode(); }
@@ -90,15 +93,14 @@ public:
     double loopStartBeat() const { return m_transport.loopStartBeat(); }
     double loopEndBeat() const { return m_transport.loopEndBeat(); }
 
-    // Master faders y medidores
     float masterPeakLeft() const;
     float masterPeakRight() const;
     float masterVolumeDb() const;
     Q_INVOKABLE void setMasterVolumeDb(float dB);
 
     // Getters de Sesión / Proyectos
-    bool isDirty() const { return m_sessionManager.isDirty(); }
-    QVariantList recentProjects() const { return m_sessionManager.getRecentProjects(); }
+    bool isDirty() const;
+    QVariantList recentProjects() const;
     QString currentProjectName() const;
     QString currentProjectPath() const;
 

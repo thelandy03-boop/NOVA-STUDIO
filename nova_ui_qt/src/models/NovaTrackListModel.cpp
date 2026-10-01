@@ -1,4 +1,5 @@
 #include "NovaTrackListModel.h"
+#include "../core/NovaLogging.h"
 #include <QDebug>
 #include <cmath>
 #include <algorithm>
@@ -30,7 +31,6 @@
 #pragma pop_macro("signals")
 #pragma pop_macro("foreach")
 
-// 🎛️ SOFT CLIPPER ANALÓGICO TRANSPARENTE
 inline float applySoftClip(float x) noexcept
 {
     constexpr float threshold = 0.8f;
@@ -98,6 +98,7 @@ void NovaTrackListModel::syncWithArdour()
     }
     endResetModel();
 
+    qCDebug(novaModel) << "🔊 [TrackModel] Sincronizadas" << m_routes.size() << "pistas en la sesión activa.";
     Q_EMIT trackCountChanged(static_cast<int>(m_routes.size()));
 }
 
@@ -128,7 +129,7 @@ QVariant NovaTrackListModel::data(const QModelIndex &index, int role) const
         auto panCtrl = route->pan_azimuth_control();
         if (panCtrl) {
             float val = static_cast<float>(panCtrl->get_value());
-            return (val * 2.0f) - 1.0f; // Ardour [0.0, 1.0] -> UI [-1.0, 1.0]
+            return (val * 2.0f) - 1.0f;
         }
         return 0.0f;
     }
@@ -190,12 +191,14 @@ void NovaTrackListModel::addAudioTrack(const QString &name)
                 if (auto track = std::dynamic_pointer_cast<ARDOUR::Track>(route)) {
                     track->ensure_input_monitoring(false);
                 }
-                // 🎛️ Headroom de estudio preventivo (-3 dBFS / 0.707f) estilo FL Studio
                 if (route->gain_control()) {
-                    route->gain_control()->set_value(0.7079f, PBD::Controllable::NoGroup);
+                    route->gain_control()->set_value(0.7079f, PBD::Controllable::NoGroup); // -3 dBFS
                 }
             }
         }
+        
+        m_session->set_dirty(); // 🚀 MARCAR SESIÓN COMO MODIFICADA PARA GUARDAR EN EL XML
+        syncWithArdour();
     }
 }
 
@@ -203,7 +206,11 @@ void NovaTrackListModel::addMidiTrack(const QString &name)
 {
     if (!m_session) return;
     ARDOUR::RouteList rl = m_session->new_midi_route(nullptr, 1, name.toStdString(), true, nullptr, nullptr, ARDOUR::PresentationInfo::MidiTrack, ARDOUR::PresentationInfo::max_order);
-    if (!rl.empty()) m_session->add_routes(rl, true, true, ARDOUR::PresentationInfo::max_order);
+    if (!rl.empty()) {
+        m_session->add_routes(rl, true, true, ARDOUR::PresentationInfo::max_order);
+        m_session->set_dirty(); // 🚀 MARCAR SESIÓN COMO MODIFICADA
+        syncWithArdour();
+    }
 }
 
 void NovaTrackListModel::removeTrack(int row)
@@ -214,6 +221,7 @@ void NovaTrackListModel::removeTrack(int row)
         auto rl = std::make_shared<ARDOUR::RouteList>();
         rl->push_back(route);
         m_session->remove_routes(rl);
+        m_session->set_dirty(); // 🚀 MARCAR SESIÓN COMO MODIFICADA
         syncWithArdour();
     }
 }
@@ -224,6 +232,7 @@ void NovaTrackListModel::setGain(int row, float dB)
     auto gc = m_routes[static_cast<size_t>(row)]->gain_control();
     if (gc) {
         gc->set_value(dbToCoeff(dB), PBD::Controllable::NoGroup);
+        if (m_session) m_session->set_dirty();
         Q_EMIT dataChanged(index(row), index(row), {GainRole});
     }
 }
@@ -235,6 +244,7 @@ void NovaTrackListModel::setPan(int row, float pan)
     if (panCtrl) {
         float ardourPan = std::clamp((pan + 1.0f) * 0.5f, 0.0f, 1.0f);
         panCtrl->set_value(ardourPan, PBD::Controllable::NoGroup);
+        if (m_session) m_session->set_dirty();
         Q_EMIT dataChanged(index(row), index(row), {PanRole});
     }
 }
@@ -245,6 +255,7 @@ void NovaTrackListModel::setMute(int row, bool muted)
     auto mc = m_routes[static_cast<size_t>(row)]->mute_control();
     if (mc) {
         mc->set_value(muted ? 1.0f : 0.0f, PBD::Controllable::NoGroup);
+        if (m_session) m_session->set_dirty();
         Q_EMIT dataChanged(index(row), index(row), {MuteRole});
     }
 }
@@ -255,6 +266,7 @@ void NovaTrackListModel::setSolo(int row, bool soloed)
     auto sc = m_routes[static_cast<size_t>(row)]->solo_control();
     if (sc) {
         sc->set_value(soloed ? 1.0f : 0.0f, PBD::Controllable::NoGroup);
+        if (m_session) m_session->set_dirty();
         Q_EMIT dataChanged(index(row), index(row), {SoloRole});
     }
 }
@@ -265,6 +277,7 @@ void NovaTrackListModel::setRecEnable(int row, bool armed)
     auto track = std::dynamic_pointer_cast<ARDOUR::Track>(m_routes[static_cast<size_t>(row)]);
     if (track && track->rec_enable_control()) {
         track->rec_enable_control()->set_value(armed ? 1.0f : 0.0f, PBD::Controllable::NoGroup);
+        if (m_session) m_session->set_dirty();
         Q_EMIT dataChanged(index(row), index(row), {RecEnableRole});
     }
 }

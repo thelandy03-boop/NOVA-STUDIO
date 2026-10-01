@@ -2,6 +2,7 @@
 #include "core/NovaLogging.h"
 #include "core/NovaAudioDeviceManager.h"
 #include "core/NovaHardwareSanitizer.h"
+#include "core/NovaProjectManager.h"
 #include "models/NovaTrackListModel.h"
 #include "models/NovaRegionModel.h"
 #include "views/NovaWaveformItem.h"
@@ -53,9 +54,6 @@ NovaAudioEngine::NovaAudioEngine(QObject *parent)
 
     // Conectar el grabador de pistas
     connect(&m_recorder, &NovaRecordManager::isRecordingChanged, this, &NovaAudioEngine::isRecordingChanged);
-
-    // Conectar señales del administrador de sesiones
-    connect(&m_sessionManager, &NovaSessionManager::recentProjectsChanged, this, &NovaAudioEngine::recentProjectsChanged);
 }
 
 NovaAudioEngine::~NovaAudioEngine()
@@ -84,32 +82,45 @@ bool NovaAudioEngine::initEngine()
 void NovaAudioEngine::connectSessionSignals()
 {
     auto session = m_sessionManager.session();
-    if (session) {
-        m_transport.setSession(session);
-        m_recorder.setSession(session);
-        m_recorder.setRegionModel(m_regionModel);
-        m_recorder.setTransportController(&m_transport);
-        m_trackModel->setSession(session);
-        m_regionModel->setSession(session);
-        m_deviceManager.setEngine(m_sessionManager.engine());
+    m_transport.setSession(session);
+    m_recorder.setSession(session);
+    m_recorder.setRegionModel(m_regionModel);
+    m_recorder.setTransportController(&m_transport);
+    m_trackModel->setSession(session);
+    m_regionModel->setSession(session);
+    m_deviceManager.setEngine(m_sessionManager.engine());
 
-        // Conectar el renderizador global de formas de onda
-        NovaWaveformItem::setSession(session);
+    // Conectar el renderizador global de formas de onda
+    NovaWaveformItem::setSession(session);
 
-        // Notificar cambios del proyecto a la interfaz
-        Q_EMIT currentProjectChanged();
-        Q_EMIT isDirtyChanged();
-        Q_EMIT tracksChanged();
-        Q_EMIT regionsChanged();
-    }
+    // Notificar cambios del proyecto a la interfaz
+    Q_EMIT currentProjectChanged();
+    Q_EMIT isDirtyChanged();
+    Q_EMIT tracksChanged();
+    Q_EMIT regionsChanged();
+    Q_EMIT recentProjectsChanged();
 }
+
+// Controles de Transporte
+void NovaAudioEngine::play() { m_transport.play(); }
+void NovaAudioEngine::pause() { m_transport.pause(); }
+void NovaAudioEngine::stop() { m_transport.stop(); }
+void NovaAudioEngine::togglePlay() { m_transport.togglePlay(); }
+void NovaAudioEngine::toggleRecord() { m_recorder.toggleRecord(); }
+void NovaAudioEngine::locateFrame(double frame) { m_transport.locateFrame(frame); }
+void NovaAudioEngine::locateBeat(double beat) { m_transport.locateBeat(beat); }
+void NovaAudioEngine::setBpm(double bpm) { m_transport.setBpm(bpm); }
+
+void NovaAudioEngine::setLoopEnabled(bool enabled) { m_transport.setLoopEnabled(enabled); }
+void NovaAudioEngine::setLoopRange(double startBeat, double endBeat) { m_transport.setLoopRange(startBeat, endBeat); }
 
 // 💾 GUARDAR EL PROYECTO ACTUAL (DESDE BOTÓN O CTRL + S)
 bool NovaAudioEngine::saveProject()
 {
-    bool ok = m_sessionManager.saveSession();
+    bool ok = NovaProjectManager::saveProject(m_sessionManager.session());
     if (ok) {
         Q_EMIT isDirtyChanged();
+        Q_EMIT recentProjectsChanged();
     }
     return ok;
 }
@@ -118,22 +129,32 @@ bool NovaAudioEngine::saveProject()
 bool NovaAudioEngine::openProject(const QString &path)
 {
     qCDebug(novaCore) << "🔊 Solicitada apertura del proyecto en:" << path;
-    bool ok = m_sessionManager.loadSession(path);
-    if (ok) {
+    m_sessionManager.closeCurrentSession();
+    
+    auto session = NovaProjectManager::openProject(m_sessionManager.engine(), path);
+    m_sessionManager.setSession(session);
+    
+    if (session) {
         connectSessionSignals();
+        return true;
     }
-    return ok;
+    return false;
 }
 
-// 🆕 CREAR UN NUEVO PROYECTO LIMPIO
+// 🆕 CREAR UN NUEVO PROYECTO LIMPIO INDEPENDIENTE
 bool NovaAudioEngine::newProject(const QString &name, const QString &parentDir)
 {
     qCDebug(novaCore) << "🔊 Creando nuevo proyecto comercial:" << name << "en:" << parentDir;
-    bool ok = m_sessionManager.createNewSession(name, parentDir);
-    if (ok) {
+    m_sessionManager.closeCurrentSession();
+    
+    auto session = NovaProjectManager::createProject(m_sessionManager.engine(), name, parentDir);
+    m_sessionManager.setSession(session);
+    
+    if (session) {
         connectSessionSignals();
+        return true;
     }
-    return ok;
+    return false;
 }
 
 // 🚪 CERRAR EL PROYECTO ACTIVO Y LIBERAR RECURSOS
@@ -148,6 +169,36 @@ void NovaAudioEngine::closeProject()
     
     Q_EMIT currentProjectChanged();
     Q_EMIT isDirtyChanged();
+    Q_EMIT tracksChanged();
+    Q_EMIT regionsChanged();
+    Q_EMIT recentProjectsChanged();
+}
+
+// 🗑️ DESCARTAR CAMBIOS Y ELIMINAR PROYECTO NO GUARDADO
+void NovaAudioEngine::discardProject()
+{
+    qCDebug(novaCore) << "🗑️ Descartando proyecto activo sin guardar...";
+    if (m_sessionManager.session()) {
+        NovaProjectManager::discardUnsavedProject(m_sessionManager.session());
+    }
+    closeProject();
+}
+
+// 🗑️ ELIMINAR PROYECTO DEL HISTORIAL DE RECIENTES
+void NovaAudioEngine::removeRecentProject(const QString &path)
+{
+    NovaProjectManager::removeProjectFromRecent(path);
+    Q_EMIT recentProjectsChanged();
+}
+
+bool NovaAudioEngine::isDirty() const
+{
+    return NovaProjectManager::isDirty(m_sessionManager.session());
+}
+
+QVariantList NovaAudioEngine::recentProjects() const
+{
+    return NovaProjectManager::getRecentProjects();
 }
 
 QString NovaAudioEngine::currentProjectName() const

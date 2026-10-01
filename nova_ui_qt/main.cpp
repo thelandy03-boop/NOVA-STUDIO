@@ -22,10 +22,15 @@ int main(int argc, char *argv[])
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
     qputenv("QML_DISABLE_DISK_CACHE", "1");
 
-    QGuiApplication app(argc, argv);
-    app.setQuitOnLastWindowClosed(true); // 🔒 Cierre limpio al cerrar la ventana (evita procesos zombi)
+    // 🛡️ Identificadores globales de la aplicación (Silencia warnings de QSettings)
+    QCoreApplication::setOrganizationName("NovaStudio");
+    QCoreApplication::setOrganizationDomain("novastudio.org");
+    QCoreApplication::setApplicationName("NovaStudio");
 
-    // 🎨 REGISTRAR EL TIPO QML NATIVO PARA FORMAS DE ONDA (NovaStudio 1.0)
+    QGuiApplication app(argc, argv);
+    app.setQuitOnLastWindowClosed(true);
+
+    // 🎨 Registrar tipo nativo de formas de onda
     qmlRegisterType<NovaWaveformItem>("NovaStudio", 1, 0, "NovaWaveformItem");
 
     // Instancia del Motor de Audio Nova / Ardour Bridge
@@ -37,7 +42,6 @@ int main(int argc, char *argv[])
     // Registrar audioEngine globalmente en QML
     engine.rootContext()->setContextProperty("AudioEngine", &audioEngine);
 
-    // build/ → ../qml  |  build/Release → ../../qml
     QStringList candidates;
     candidates << QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../qml")
                << QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../qml")
