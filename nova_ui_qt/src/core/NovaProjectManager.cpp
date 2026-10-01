@@ -1,5 +1,6 @@
 #include "NovaProjectManager.h"
 #include "NovaLogging.h"
+#include "platform/NovaPlatformUtils.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QUrl>
@@ -31,17 +32,7 @@ NovaProjectManager::NovaProjectManager(QObject *parent)
 
 QString NovaProjectManager::sanitizePath(const QString &rawPath)
 {
-    if (rawPath.isEmpty()) return QString();
-
-    QString path = rawPath;
-    if (path.startsWith("file://")) {
-        path = QUrl(path).toLocalFile();
-    } else if (path.startsWith("file:/")) {
-        path = QUrl(path).toLocalFile();
-    }
-
-    path = QUrl::fromPercentEncoding(path.toUtf8());
-    return QDir::cleanPath(path);
+    return NovaPlatformUtils::sanitizePath(rawPath);
 }
 
 bool NovaProjectManager::saveProject(ARDOUR::Session *session)
@@ -76,17 +67,17 @@ bool NovaProjectManager::isDirty(ARDOUR::Session *session)
 
 ARDOUR::Session* NovaProjectManager::createProject(ARDOUR::AudioEngine *engine, const QString &projectName, const QString &parentDir)
 {
-    if (!engine || projectName.isEmpty() || parentDir.isEmpty()) return nullptr;
+    if (!engine || projectName.isEmpty()) return nullptr;
 
-    QString cleanParentDir = sanitizePath(parentDir);
-    QString sessionDir = cleanParentDir + "/" + projectName;
+    QString targetParentDir = parentDir.isEmpty() ? NovaPlatformUtils::getProjectsDirectory() : sanitizePath(parentDir);
+    QString sessionDir = targetParentDir + "/" + projectName;
     qCDebug(novaCore) << "🆕 Generando proyecto nuevo independiente en:" << sessionDir;
 
     try {
         if (QDir(sessionDir).exists()) {
             QDir(sessionDir).removeRecursively();
         }
-        QDir().mkpath(cleanParentDir);
+        QDir().mkpath(targetParentDir);
 
         ARDOUR::BusProfile bus_profile;
         bus_profile.master_out_channels = 2;
@@ -98,8 +89,6 @@ ARDOUR::Session* NovaProjectManager::createProject(ARDOUR::AudioEngine *engine, 
             session->config.set_session_monitoring(ARDOUR::MonitorDisk);
 
             qCDebug(novaCore) << "🆕 [OK] Nuevo proyecto instanciado correctamente en memoria.";
-            // 🎯 NOTA: NO se llama a addProjectToRecent aquí.
-            // Solo se agregará a Recientes si el usuario lo guarda con Ctrl+S o lo reabre.
             return session;
         }
     } catch (const std::exception &e) {
@@ -240,7 +229,6 @@ void NovaProjectManager::discardUnsavedProject(ARDOUR::Session *session)
     QString path = sanitizePath(QString::fromStdString(session->path()));
     removeProjectFromRecent(path);
 
-    // Si el proyecto nunca fue guardado explícitamente (es decir, fue creado en esta sesión y no se guardó), se elimina su carpeta
     if (!path.isEmpty() && QDir(path).exists()) {
         qCDebug(novaCore) << "🗑️ Descartando y eliminando carpeta física de proyecto no guardado:" << path;
         QDir(path).removeRecursively();

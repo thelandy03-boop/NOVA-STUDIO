@@ -103,7 +103,7 @@ void NovaAudioEngine::connectSessionSignals()
 
 // Controles de Transporte
 void NovaAudioEngine::play() { m_transport.play(); }
-void NovaAudioEngine::pause() { m_transport.pause(); }
+void NovaAudioEngine::pause() { m_transport.stop(); }
 void NovaAudioEngine::stop() { m_transport.stop(); }
 void NovaAudioEngine::togglePlay() { m_transport.togglePlay(); }
 void NovaAudioEngine::toggleRecord() { m_recorder.toggleRecord(); }
