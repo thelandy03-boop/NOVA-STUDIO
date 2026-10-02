@@ -4,7 +4,7 @@
 #include <cmath>
 #include <algorithm>
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
 #include "platform/NovaAndroidStubs.h"
 #else
 #pragma push_macro("emit")
@@ -49,7 +49,7 @@ void NovaTransportController::play()
     if (!m_session) return;
 
     m_locatePending = false;
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
     m_session->request_roll();
 #endif
     m_isPlaying = true;
@@ -59,7 +59,7 @@ void NovaTransportController::play()
 
 void NovaTransportController::stop()
 {
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     bool wasRolling = m_isPlaying;
 #else
     bool wasRolling = m_isPlaying || (m_session && (m_session->transport_rolling() || m_session->transport_speed() != 0.0));
@@ -68,7 +68,7 @@ void NovaTransportController::stop()
     m_isPlaying = false;
     Q_EMIT isPlayingChanged();
 
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
     if (m_session) {
         m_session->request_stop();
     }
@@ -108,7 +108,7 @@ void NovaTransportController::locateFrame(double frame)
     if (!m_session) return;
     ARDOUR::samplepos_t pos = static_cast<ARDOUR::samplepos_t>(std::max(0.0, frame));
     
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
     m_session->request_locate(pos);
 #endif
     m_targetLocateFrame = static_cast<double>(pos);
@@ -159,7 +159,7 @@ void NovaTransportController::setLoopRange(double startBeat, double endBeat)
     m_loopStartBeat = std::max(0.0, startBeat);
     m_loopEndBeat = std::max(m_loopStartBeat + 1.0, endBeat);
 
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
     if (!m_session || !m_session->locations()) return;
 
     double sr = m_session->sample_rate() > 0 ? static_cast<double>(m_session->sample_rate()) : 44100.0;
@@ -190,7 +190,7 @@ void NovaTransportController::setLoopEnabled(bool enabled)
     if (m_loopEnabled == enabled) return;
 
     m_loopEnabled = enabled;
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
     m_session->request_play_loop(m_loopEnabled);
 #endif
     Q_EMIT loopEnabledChanged();
@@ -212,7 +212,7 @@ void NovaTransportController::updatePositionFromArdour()
 
     ARDOUR::samplecnt_t sr = m_session->sample_rate() > 0 ? m_session->sample_rate() : 44100;
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     m_currentFrame += (static_cast<double>(sr) * 0.016);
 #else
     ARDOUR::samplepos_t pos = m_session->transport_sample();

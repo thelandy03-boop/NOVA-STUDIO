@@ -10,7 +10,7 @@
 #include <thread>
 #include <chrono>
 
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -50,7 +50,7 @@ bool NovaSessionManager::initSession()
     qCDebug(novaCore) << "Inicializando subsistemas PBD y Ardour Core...";
 
     try {
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
         if (!ARDOUR::init(true, nullptr, true)) {
             qCCritical(novaCore) << "Error al inicializar subsistemas globales ARDOUR::init";
             return false;
@@ -96,7 +96,7 @@ bool NovaSessionManager::initSession()
 
         qCDebug(novaCore) << "🔊 Conectado exitosamente al servidor PipeWire-JACK!";
 #else
-        qCDebug(novaCore) << "📱 Inicializando subsistema C++ para Android...";
+        qCDebug(novaCore) << "📱 Inicializando subsistema C++ para Android/Windows...";
         if (!m_engine) {
             m_engine = ARDOUR::AudioEngine::create();
         }
@@ -114,7 +114,9 @@ void NovaSessionManager::closeCurrentSession()
 {
     if (m_session) {
         qCDebug(novaCore) << "🚪 Cerrando sesión activa de Ardour...";
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
         delete m_session;
+#endif
         m_session = nullptr;
     }
 }

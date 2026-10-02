@@ -7,7 +7,7 @@
 #include <QSettings>
 #include <QDateTime>
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
 #include "platform/NovaAndroidStubs.h"
 #else
 #pragma push_macro("emit")

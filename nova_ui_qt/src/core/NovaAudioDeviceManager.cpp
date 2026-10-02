@@ -1,7 +1,7 @@
 #include "NovaAudioDeviceManager.h"
 #include "NovaLogging.h"
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
 #include "platform/NovaAndroidStubs.h"
 #else
 #pragma push_macro("emit")
@@ -25,9 +25,12 @@
 NovaAudioDeviceManager::NovaAudioDeviceManager(QObject *parent)
     : QObject(parent)
 {
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     m_availableBackends << "AAudio" << "OpenSL ES" << "None (Dummy)";
     m_activeBackend = QStringLiteral("AAudio");
+#elif defined(Q_OS_WIN)
+    m_availableBackends << "WASAPI" << "ASIO" << "DirectSound" << "None (Dummy)";
+    m_activeBackend = QStringLiteral("WASAPI");
 #else
     m_availableBackends << "ALSA" << "JACK" << "PulseAudio" << "None (Dummy)";
 #endif
@@ -47,7 +50,7 @@ bool NovaAudioDeviceManager::switchBackend(const QString &backendName)
 
     qCDebug(novaCore) << "Intentando cambiar backend a:" << backendName;
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     m_activeBackend = backendName;
     Q_EMIT activeBackendChanged();
     refreshDevices();
@@ -84,9 +87,12 @@ void NovaAudioDeviceManager::refreshDevices()
     m_inputDevices.clear();
     m_outputDevices.clear();
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     m_inputDevices << "Micrófono Android (AAudio)" << "Entrada de Audio Móvil";
     m_outputDevices << "Altavoces Android (AAudio)" << "Salida Auriculares / USB-C";
+#elif defined(Q_OS_WIN)
+    m_inputDevices << "Micrófono del Sistema (WASAPI)" << "Entrada DirectSound";
+    m_outputDevices << "Altavoces / Auriculares (WASAPI)" << "Salida DirectSound";
 #else
     auto currentBackend = m_engine->current_backend();
     if (currentBackend) {
@@ -137,8 +143,8 @@ void NovaAudioDeviceManager::refreshDevices()
 bool NovaAudioDeviceManager::setInputDevice(const QString &deviceName)
 {
     if (!m_engine) return false;
-#if defined(Q_OS_ANDROID)
-    qCDebug(novaCore) << "Dispositivo de entrada Android establecido en:" << deviceName;
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
+    qCDebug(novaCore) << "Dispositivo de entrada establecido en:" << deviceName;
     return true;
 #else
     auto backend = m_engine->current_backend();
@@ -154,8 +160,8 @@ bool NovaAudioDeviceManager::setInputDevice(const QString &deviceName)
 bool NovaAudioDeviceManager::setOutputDevice(const QString &deviceName)
 {
     if (!m_engine) return false;
-#if defined(Q_OS_ANDROID)
-    qCDebug(novaCore) << "Dispositivo de salida Android establecido en:" << deviceName;
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
+    qCDebug(novaCore) << "Dispositivo de salida establecido en:" << deviceName;
     return true;
 #else
     auto backend = m_engine->current_backend();
@@ -175,7 +181,7 @@ bool NovaAudioDeviceManager::setSampleRate(int rate)
 
     if (m_engine) {
         m_engine->set_sample_rate(m_sampleRate);
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
         auto backend = m_engine->current_backend();
         if (backend) {
             backend->set_sample_rate(static_cast<float>(m_sampleRate));
@@ -195,7 +201,7 @@ bool NovaAudioDeviceManager::setBufferSize(int size)
 
     if (m_engine) {
         m_engine->set_buffer_size(m_bufferSize);
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
         auto backend = m_engine->current_backend();
         if (backend) {
             backend->set_buffer_size(m_bufferSize);

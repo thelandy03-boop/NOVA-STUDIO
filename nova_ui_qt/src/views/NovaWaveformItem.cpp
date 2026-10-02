@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <vector>
 
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")

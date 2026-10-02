@@ -8,12 +8,24 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <algorithm>
 
 namespace PBD {
+    class Controllable {
+    public:
+        enum GroupControlDisposition { NoGroup };
+        virtual ~Controllable() = default;
+        virtual double get_value() const { return m_val; }
+        virtual void set_value(double val, GroupControlDisposition = NoGroup) { m_val = val; }
+    protected:
+        double m_val = 1.0;
+    };
+
     class ScopedConnectionList {
     public:
         void drop_connections() {}
     };
+
     class PropertyList {
     public:
         template<typename T, typename V>
@@ -42,6 +54,34 @@ namespace ARDOUR {
     enum MonitorChoice { MonitorDisk };
     enum MeterType { MeterPeak };
     enum SrcQuality { SrcFastest };
+    enum TrackMode { Normal, NonLayered, Destructive };
+
+    namespace PresentationInfo {
+        using order_t = uint32_t;
+        inline const order_t max_order = 0xFFFFFFFF;
+    }
+
+    class AutomationControl : public PBD::Controllable {
+    public:
+        virtual ~AutomationControl() = default;
+    };
+
+    class GainControl : public AutomationControl {
+    public:
+        GainControl() { m_val = 1.0; }
+    };
+
+    class MuteControl : public AutomationControl {
+    public:
+        MuteControl() { m_val = 0.0; }
+        bool muted() const { return m_val > 0.5; }
+    };
+
+    class SoloControl : public AutomationControl {
+    public:
+        SoloControl() { m_val = 0.0; }
+        bool self_soloed() const { return m_val > 0.5; }
+    };
 
     namespace Properties {
         inline const char* start = "start";
@@ -123,27 +163,58 @@ namespace ARDOUR {
         std::shared_ptr<RegionList> region_list() { return std::make_shared<RegionList>(); }
         void add_region(std::shared_ptr<Region>, Temporal::timepos_t) {}
         void remove_region(std::shared_ptr<Region>) {}
+        void split_region(std::shared_ptr<Region>, Temporal::timepos_t const &) {}
     };
 
     class Route {
     public:
+        explicit Route(std::string name = "Master") : m_name(std::move(name)) {
+            m_gain = std::make_shared<GainControl>();
+            m_mute = std::make_shared<MuteControl>();
+            m_solo = std::make_shared<SoloControl>();
+            m_pan = std::make_shared<AutomationControl>();
+            m_rec = std::make_shared<AutomationControl>();
+        }
         virtual ~Route() = default;
         virtual bool is_track() const { return false; }
-        virtual std::string name() const { return "Master"; }
+        virtual std::string name() const { return m_name; }
+
+        std::shared_ptr<GainControl> gain_control() const { return m_gain; }
+        std::shared_ptr<MuteControl> mute_control() const { return m_mute; }
+        std::shared_ptr<SoloControl> solo_control() const { return m_solo; }
+        std::shared_ptr<AutomationControl> pan_azimuth_control() const { return m_pan; }
+
+    protected:
+        std::string m_name;
+        std::shared_ptr<GainControl> m_gain;
+        std::shared_ptr<MuteControl> m_mute;
+        std::shared_ptr<SoloControl> m_solo;
+        std::shared_ptr<AutomationControl> m_pan;
+        std::shared_ptr<AutomationControl> m_rec;
     };
 
     class Track : public Route {
     public:
+        explicit Track(std::string name = "Track") : Route(std::move(name)) {}
         bool is_track() const override { return true; }
         std::shared_ptr<Playlist> playlist() { return std::make_shared<Playlist>(); }
+        std::shared_ptr<AutomationControl> rec_enable_control() const { return m_rec; }
     };
 
     class AudioTrack : public Track {
     public:
+        explicit AudioTrack(std::string name = "Audio Track") : Track(std::move(name)) {}
         std::shared_ptr<Source> write_source(int) { return nullptr; }
     };
 
+    class MidiTrack : public Track {
+    public:
+        explicit MidiTrack(std::string name = "MIDI Track") : Track(std::move(name)) {}
+    };
+
     using RouteList = std::vector<std::shared_ptr<Route>>;
+    using AudioTrackList = std::vector<std::shared_ptr<AudioTrack>>;
+    class RouteGroup {};
 
     class AudioBackend {
     public:
@@ -154,7 +225,7 @@ namespace ARDOUR {
     public:
         Config config;
         Session(class AudioEngine&, const std::string& path, const std::string& name, BusProfile*, const std::string&, bool)
-            : m_path(path), m_name(name) {}
+            : m_path(path), m_name(name), m_routes(std::make_shared<RouteList>()) {}
         
         bool dirty() const { return m_dirty; }
         void set_dirty() { m_dirty = true; }
@@ -164,14 +235,37 @@ namespace ARDOUR {
         std::string name() const { return m_name; }
         double sample_rate() const { return 48000.0; }
         
-        std::shared_ptr<RouteList> get_routes() { return std::make_shared<RouteList>(); }
+        std::shared_ptr<RouteList> get_routes() { return m_routes; }
         void* master_out() { return nullptr; }
         void import_files(ImportStatus& s) { s.done = true; }
+
+        AudioTrackList new_audio_track(int, int, std::shared_ptr<RouteGroup>, uint32_t how_many,
+                                       std::string name_template, PresentationInfo::order_t,
+                                       TrackMode = Normal, bool = true, bool = false) {
+            AudioTrackList list;
+            for (uint32_t i = 0; i < how_many; ++i) {
+                auto trk = std::make_shared<AudioTrack>(name_template);
+                m_routes->push_back(trk);
+                list.push_back(trk);
+            }
+            m_dirty = true;
+            return list;
+        }
+
+        void remove_route(std::shared_ptr<Route> r) {
+            if (!r || !m_routes) return;
+            auto it = std::find(m_routes->begin(), m_routes->end(), r);
+            if (it != m_routes->end()) {
+                m_routes->erase(it);
+                m_dirty = true;
+            }
+        }
 
     private:
         std::string m_path;
         std::string m_name;
         bool m_dirty = false;
+        std::shared_ptr<RouteList> m_routes;
     };
 
     class AudioEngine {

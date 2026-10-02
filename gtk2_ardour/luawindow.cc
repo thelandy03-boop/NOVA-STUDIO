@@ -39,7 +39,7 @@
 #include "luawindow.h"
 #include "luainstance.h"
 #include "public_editor.h"
-#include "luabridge/LuaBridge.h"
+#include "LuaBridge/LuaBridge.h"
 #include "ui_config.h"
 #include "ardour_ui.h"
 

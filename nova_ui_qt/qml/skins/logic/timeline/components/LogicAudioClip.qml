@@ -11,7 +11,7 @@ Item {
     property string clipName: model.regionName || "Audio Clip"
     property string clipColor: model.isLiveRecording ? "#FF3B30" : (model.regionColor || "#4A90E2")
     property real snapGridBeats: 1.0
-    property bool isSelected: false
+    property bool isSelected: AudioEngine.regions.selectedRegionIndex === index
     property bool isLiveRecording: (typeof model.isLiveRecording !== "undefined") ? model.isLiveRecording : false
 
     // Propiedades de Ganancia y Fundidos (Fades)
@@ -128,6 +128,7 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
+                        AudioEngine.regions.selectedRegionIndex = index
                         AudioEngine.regions.normalizeClip(index)
                     }
                 }
@@ -155,7 +156,9 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: AudioEngine.regions.removeRegion(index)
+                    onClicked: {
+                        AudioEngine.regions.removeRegion(index)
+                    }
                 }
             }
         }
@@ -261,7 +264,7 @@ Item {
                 property real startGain: 0
 
                 onPressed: (mouse) => {
-                    root.isSelected = true
+                    AudioEngine.regions.selectedRegionIndex = index
                     startY = mouse.y
                     startGain = root.clipGainDb
                 }
@@ -299,7 +302,7 @@ Item {
                 property real startFadeBeats: 0
 
                 onPressed: (mouse) => {
-                    root.isSelected = true
+                    AudioEngine.regions.selectedRegionIndex = index
                     var pt = mapToItem(root.parent, mouse.x, mouse.y)
                     pressParentX = pt.x
                     startFadeBeats = root.fadeInBeats
@@ -341,7 +344,7 @@ Item {
                 property real startFadeBeats: 0
 
                 onPressed: (mouse) => {
-                    root.isSelected = true
+                    AudioEngine.regions.selectedRegionIndex = index
                     var pt = mapToItem(root.parent, mouse.x, mouse.y)
                     pressParentX = pt.x
                     startFadeBeats = root.fadeOutBeats
@@ -384,7 +387,7 @@ Item {
                 property real pressParentX: 0
 
                 onPressed: (mouse) => {
-                    root.isSelected = true
+                    AudioEngine.regions.selectedRegionIndex = index
                     initialX = root.x
                     initialWidth = root.width
                     var pt = mapToItem(root.parent, mouse.x, mouse.y)
@@ -441,7 +444,7 @@ Item {
                 property real pressParentX: 0
 
                 onPressed: (mouse) => {
-                    root.isSelected = true
+                    AudioEngine.regions.selectedRegionIndex = index
                     initialWidth = root.width
                     var pt = mapToItem(root.parent, mouse.x, mouse.y)
                     pressParentX = pt.x
@@ -480,7 +483,7 @@ Item {
             drag.maximumX: root.parent ? root.parent.width - root.width : 4800
 
             onPressed: {
-                root.isSelected = true
+                AudioEngine.regions.selectedRegionIndex = index
             }
 
             onReleased: {

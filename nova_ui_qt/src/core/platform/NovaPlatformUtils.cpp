@@ -6,7 +6,7 @@
 
 QString NovaPlatformUtils::getProjectsDirectory()
 {
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 #else
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);

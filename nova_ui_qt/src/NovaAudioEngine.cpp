@@ -12,7 +12,7 @@
 #include <cmath>
 #include <algorithm>
 
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
 #pragma push_macro("emit")
 #pragma push_macro("slots")
 #pragma push_macro("signals")
@@ -115,6 +115,47 @@ void NovaAudioEngine::setBpm(double bpm) { m_transport.setBpm(bpm); }
 
 void NovaAudioEngine::setLoopEnabled(bool enabled) { m_transport.setLoopEnabled(enabled); }
 void NovaAudioEngine::setLoopRange(double startBeat, double endBeat) { m_transport.setLoopRange(startBeat, endBeat); }
+
+// ✂️ HERRAMIENTA SPLIT: Dividir clip en el punto exacto del Playhead
+bool NovaAudioEngine::splitAtPlayhead(int targetRegionIndex)
+{
+    if (!m_regionModel) return false;
+
+    double playheadBeat = m_transport.currentBeat();
+
+    // 1. Si se le pasó un índice explícito, cortar esa región específica
+    if (targetRegionIndex >= 0) {
+        return m_regionModel->splitRegion(targetRegionIndex, playheadBeat);
+    }
+
+    // 2. Si no se especificó índice, buscar automáticamente la región bajo el Playhead
+    bool anySplit = false;
+    int count = m_regionModel->rowCount();
+
+    for (int i = 0; i < count; ++i) {
+        QModelIndex idx = m_regionModel->index(i, 0);
+        double startBeat = m_regionModel->data(idx, NovaRegionModel::StartBeatRole).toDouble();
+        double lengthBeats = m_regionModel->data(idx, NovaRegionModel::LengthBeatsRole).toDouble();
+        double endBeat = startBeat + lengthBeats;
+
+        if (playheadBeat > startBeat + 0.01 && playheadBeat < endBeat - 0.01) {
+            qCDebug(novaCore) << "✂️ [Split] Cortando clip en índice" << i << "en beat:" << playheadBeat;
+            if (m_regionModel->splitRegion(i, playheadBeat)) {
+                anySplit = true;
+                break; // Dividir el primer clip que coincida
+            }
+        }
+    }
+
+    if (anySplit) {
+        Q_EMIT isDirtyChanged();
+        Q_EMIT regionsChanged();
+    } else {
+        qCDebug(novaCore) << "✂️ [Split] No hay ningún clip posicionado sobre el Playhead en beat:" << playheadBeat;
+    }
+
+    return anySplit;
+}
 
 // 💾 GUARDAR EL PROYECTO ACTUAL (DESDE BOTÓN O CTRL + S)
 bool NovaAudioEngine::saveProject()
@@ -219,7 +260,7 @@ QString NovaAudioEngine::currentProjectPath() const
 
 float NovaAudioEngine::masterPeakLeft() const
 {
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     return 0.0f;
 #else
     auto session = m_sessionManager.session();
@@ -239,7 +280,7 @@ float NovaAudioEngine::masterPeakLeft() const
 
 float NovaAudioEngine::masterPeakRight() const
 {
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     return 0.0f;
 #else
     auto session = m_sessionManager.session();
@@ -259,7 +300,7 @@ float NovaAudioEngine::masterPeakRight() const
 
 float NovaAudioEngine::masterVolumeDb() const
 {
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
     return 0.0f;
 #else
     auto session = m_sessionManager.session();
@@ -279,7 +320,7 @@ float NovaAudioEngine::masterVolumeDb() const
 
 void NovaAudioEngine::setMasterVolumeDb(float dB)
 {
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WIN)
     auto session = m_sessionManager.session();
     if (!session) return;
 

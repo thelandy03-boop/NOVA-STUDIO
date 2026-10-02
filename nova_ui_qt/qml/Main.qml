@@ -143,4 +143,28 @@ Window {
             }
         }
     }
+
+    // ✂️ Cortar Clip en la Posición del Cabezal (Playhead): Tecla S
+    Shortcut {
+        sequence: "S"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (AudioEngine.splitAtPlayhead()) {
+                console.log("✂️ [Shortcut] Clip dividido en el Playhead.")
+            }
+        }
+    }
+
+    // 🗑️ Borrado de Clip Seleccionado con Teclado: Delete o Backspace
+    Shortcut {
+        sequences: ["Delete", "Backspace"]
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            var selectedIdx = AudioEngine.regions.selectedRegionIndex;
+            if (selectedIdx >= 0) {
+                console.log("🗑️ [Shortcut] Eliminando clip seleccionado en índice: " + selectedIdx);
+                AudioEngine.regions.removeRegion(selectedIdx);
+            }
+        }
+    }
 }

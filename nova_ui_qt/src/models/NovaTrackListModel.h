@@ -10,7 +10,7 @@
 #include <vector>
 #include <memory>
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
 #include "core/platform/NovaAndroidStubs.h"
 #else
 // ── PROTECCIÓN CONTRA COLISIONES DE SEÑALES ARDOUR/QT ────────────────
@@ -80,10 +80,6 @@ signals:
 
 private:
     void syncWithArdour();
-
-    // Conversión de Amplitud Lineal de Fader <-> Decibelios (Logarítmica)
-    static float coeffToDb(float coeff);
-    static float dbToCoeff(float dB);
 
     ARDOUR::Session *m_session = nullptr;
     std::vector<std::shared_ptr<ARDOUR::Route>> m_routes;

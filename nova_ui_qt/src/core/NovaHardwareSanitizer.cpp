@@ -3,13 +3,13 @@
 #include <QDebug>
 #include <QtGlobal>
 
-#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID) || defined(Q_OS_WIN) && !defined(Q_OS_WIN)
 #include <alsa/asoundlib.h>
 #endif
 
 void NovaHardwareSanitizer::sanitize()
 {
-#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID) || defined(Q_OS_WIN) && !defined(Q_OS_WIN)
     qCDebug(novaCore) << "🎙️ [Sanitizer] Verificando aislamiento de hardware ALSA...";
 
     int cardNum = -1;

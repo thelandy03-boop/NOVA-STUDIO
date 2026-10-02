@@ -64,6 +64,9 @@ public:
     Q_INVOKABLE void setLoopEnabled(bool enabled);
     Q_INVOKABLE void setLoopRange(double startBeat, double endBeat);
 
+    // ✂️ Herramienta Split (Cortar Clip en el Cabezal / Playhead)
+    Q_INVOKABLE bool splitAtPlayhead(int targetRegionIndex = -1);
+
     // Helpers de Tiempo y Píxeles
     Q_INVOKABLE double beatToPixel(double beat, double barWidth = 80.0) const { return NovaTimeUtils::beatToPixel(beat, barWidth); }
     Q_INVOKABLE double pixelToBeat(double pixelX, double barWidth = 80.0) const { return NovaTimeUtils::pixelToBeat(pixelX, barWidth); }

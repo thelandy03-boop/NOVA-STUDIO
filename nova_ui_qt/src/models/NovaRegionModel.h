@@ -11,8 +11,9 @@
 #include <mutex>
 #include <map>
 #include <thread>
+#include <atomic>
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
 #include "core/platform/NovaAndroidStubs.h"
 #else
 #pragma push_macro("emit")
@@ -48,6 +49,7 @@ class NovaWaveformCache {
 public:
     static void setPeaks(const QString &regionId, const std::vector<PeakPoint> &peaks);
     static bool getPeaks(const QString &regionId, std::vector<PeakPoint> &outPeaks);
+    static void removePeaks(const QString &regionId); // 🧹 Libera RAM al borrar clip (Bug 6)
     static void clear();
 
 private:
@@ -77,6 +79,9 @@ struct NovaRegionItem {
 class NovaRegionModel : public QAbstractListModel
 {
     Q_OBJECT
+    
+    // 🎯 Propiedad de Selección Global del Clip Activo en el Timeline
+    Q_PROPERTY(int selectedRegionIndex READ selectedRegionIndex WRITE setSelectedRegionIndex NOTIFY selectedRegionIndexChanged)
 
 public:
     enum RegionRoles {
@@ -105,10 +110,17 @@ public:
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    // Selección de clips
+    int selectedRegionIndex() const { return m_selectedRegionIndex; }
+    void setSelectedRegionIndex(int index);
+
     Q_INVOKABLE bool importAudioFile(int trackIndex, const QString &filePath, double startBeat);
     Q_INVOKABLE bool moveRegion(int regionIndex, double newStartBeat);
     Q_INVOKABLE bool resizeRegion(int regionIndex, double newStartBeat, double newLengthBeats);
     Q_INVOKABLE void removeRegion(int regionIndex);
+
+    // ✂️ Herramienta Split (Cortar Clips)
+    Q_INVOKABLE bool splitRegion(int regionIndex, double splitBeat);
 
     // Métodos de Clip Gain, Fades y Normalización
     Q_INVOKABLE void setClipGainDb(int regionIndex, float dB);
@@ -127,14 +139,24 @@ public:
 
 signals:
     void regionCountChanged(int count);
+    void selectedRegionIndexChanged(int index);
 
 private:
     void rebuildRegionCache();
+    std::shared_ptr<ARDOUR::Track> findTrackByIndex(int trackIndex) const; // 🧹 Clean Code (CC-2)
+    void cleanupImportThreads(); // 🧹 Limpieza automática de hilos terminados (Bug 3)
+
+    struct ImportWorker {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> finished;
+    };
 
     ARDOUR::Session *m_session = nullptr;
     std::vector<NovaRegionItem> m_regions;
     PBD::ScopedConnectionList m_sessionConnections;
-    std::vector<std::thread> m_importThreads;
+    std::vector<ImportWorker> m_importWorkers;
+    std::mutex m_workersMutex;
 
     int m_liveRecordingIndex = -1;
+    int m_selectedRegionIndex = -1;
 };

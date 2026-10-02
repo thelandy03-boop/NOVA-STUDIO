@@ -533,13 +533,13 @@ void NovaFileExplorer::delete_selected_item()
 
 	if (dialog.run () == Gtk::RESPONSE_YES) {
 		if (is_dir) {
-			if (g_rmdir (target_path.c_str ()) == 0) {
+			if (::g_rmdir (target_path.c_str ()) == 0) {
 				_signal_log_message.emit("> Deleted folder: " + target_name + "\n");
 			} else {
 				_signal_log_message.emit("> [Explorer Error] Failed to delete folder (ensure it is empty).\n");
 			}
 		} else {
-			if (g_remove (target_path.c_str ()) == 0) {
+			if (::g_remove (target_path.c_str ()) == 0) {
 				_signal_log_message.emit("> Deleted file: " + target_name + "\n");
 			} else {
 				_signal_log_message.emit("> [Explorer Error] Failed to delete file.\n");
@@ -650,7 +650,7 @@ void NovaFileExplorer::rename_selected_item()
 		return;
 	}
 
-	if (g_rename (old_path.c_str (), new_path.c_str ()) != 0) {
+	if (::g_rename (old_path.c_str (), new_path.c_str ()) != 0) {
 		_signal_log_message.emit("> [Explorer Error] Failed to rename on disk.\n");
 		return;
 	}
